@@ -17,8 +17,9 @@ use servo::{
     Scroll, ScreenGeometry, Servo, ServoBuilder, ServoDelegate, ServoError,
     SoftwareRenderingContext, StringRequest, WebView, WebViewBuilder, WebViewDelegate,
     DevicePoint, DeviceIntSize, DeviceIntRect, DeviceIntPoint, DeviceVector2D, WebViewPoint,
-    EmbedderControl, SimpleDialog,
+    EmbedderControl, SimpleDialog, SelectElement,
 };
+use servo::SelectElementOptionOrOptgroup;
 use servo::input_events::{
     EditingActionEvent, KeyboardEvent, MouseButton, MouseButtonAction, MouseButtonEvent,
     MouseMoveEvent, TouchEvent, TouchEventType, TouchId, WheelDelta, WheelEvent, WheelMode,
@@ -550,6 +551,22 @@ impl WebViewDelegate for FfiWebViewDelegate {
                     },
                 }
             },
+            EmbedderControl::SelectElement(select) => {
+                if let Some(cb) = self.callbacks.on_show_select_element {
+                    let selected_id = select.selected_option().map(|id| id as i64).unwrap_or(-1);
+                    let pos = select.position();
+                    let json = select_options_to_json(select.options());
+                    let handle = Box::into_raw(Box::new(select)) as usize;
+                    if let Ok(c) = CString::new(json) {
+                        cb(self.ud(), c.as_ptr(), selected_id,
+                           pos.min.x, pos.min.y,
+                           pos.size().width, pos.size().height,
+                           handle);
+                    } else {
+                        let _ = unsafe { Box::from_raw(handle as *mut SelectElement) };
+                    }
+                }
+            },
             _ => {}, // Other embedder controls not yet handled.
         }
     }
@@ -1053,6 +1070,48 @@ pub extern "C" fn unload_request_deny(request_handle: usize) {
     if request_handle == 0 { return; }
     let req = unsafe { *Box::from_raw(request_handle as *mut AllowOrDenyRequest) };
     req.deny();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn select_element_respond(request_handle: usize, selected_id: i64) {
+    if request_handle == 0 { return; }
+    let mut select = unsafe { *Box::from_raw(request_handle as *mut SelectElement) };
+    if selected_id >= 0 {
+        select.select(Some(selected_id as usize));
+        select.submit();
+    }
+    // If selected_id < 0, `select` drops here, which sends the current selection via Drop impl.
+}
+
+fn select_options_to_json(options: &[SelectElementOptionOrOptgroup]) -> String {
+    let items: Vec<String> = options.iter().map(|item| {
+        match item {
+            SelectElementOptionOrOptgroup::Option(opt) => {
+                format!(
+                    r#"{{"type":"option","id":{},"label":{},"disabled":{}}}"#,
+                    opt.id,
+                    serde_json::to_string(&opt.label).unwrap_or_else(|_| "\"\"".to_string()),
+                    opt.is_disabled
+                )
+            },
+            SelectElementOptionOrOptgroup::Optgroup { label, options } => {
+                let sub: Vec<String> = options.iter().map(|opt| {
+                    format!(
+                        r#"{{"type":"option","id":{},"label":{},"disabled":{}}}"#,
+                        opt.id,
+                        serde_json::to_string(&opt.label).unwrap_or_else(|_| "\"\"".to_string()),
+                        opt.is_disabled
+                    )
+                }).collect();
+                format!(
+                    r#"{{"type":"optgroup","label":{},"options":[{}]}}"#,
+                    serde_json::to_string(label).unwrap_or_else(|_| "\"\"".to_string()),
+                    sub.join(",")
+                )
+            },
+        }
+    }).collect();
+    format!("[{}]", items.join(","))
 }
 
 struct FfiClipboardDelegate {

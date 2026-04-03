@@ -82,6 +82,7 @@ public class ServoWebViewControl : Control
     public event EventHandler<AlertRequestEventArgs>? AlertRequested;
     public event EventHandler<ConfirmRequestEventArgs>? ConfirmRequested;
     public event EventHandler<PromptRequestEventArgs>? PromptRequested;
+    public event EventHandler<SelectElementRequestEventArgs>? SelectElementRequested;
 
     private string? _pageTitle;
     private bool _isLoading;
@@ -92,6 +93,7 @@ public class ServoWebViewControl : Control
     private SoftwareRenderingContext? _swRenderingContext;
     private ServoWebView? _webView;
     private ServoBitmapSurface? _surface;
+    private Panel? _contentHost;
     private double _lastScaling = 1.0;
 
     public ServoWebViewControl()
@@ -106,9 +108,12 @@ public class ServoWebViewControl : Control
         base.OnAttachedToVisualTree(e);
 
         _surface = new ServoBitmapSurface();
-        ((ISetLogicalParent)_surface).SetParent(this);
-        VisualChildren.Add(_surface);
-        LogicalChildren.Add(_surface);
+        _contentHost = new Panel();
+        _contentHost.Children.Add(_surface);
+
+        ((ISetLogicalParent)_contentHost).SetParent(this);
+        VisualChildren.Add(_contentHost);
+        LogicalChildren.Add(_contentHost);
 
         Dispatcher.UIThread.Post(InitializeServo, DispatcherPriority.Loaded);
     }
@@ -121,13 +126,13 @@ public class ServoWebViewControl : Control
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        _surface?.Arrange(new Rect(finalSize));
+        _contentHost?.Arrange(new Rect(finalSize));
         return finalSize;
     }
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        _surface?.Measure(availableSize);
+        _contentHost?.Measure(availableSize);
         return availableSize;
     }
 
@@ -226,6 +231,23 @@ public class ServoWebViewControl : Control
             if (PromptRequested != null) PromptRequested.Invoke(this, e);
             else e.Cancel();
         };
+        _webView.SelectElementRequested += (_, e) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_contentHost == null) { e.Dismiss(); return; }
+
+                // Let consumers override the default behavior if needed
+                if (SelectElementRequested != null)
+                {
+                    SelectElementRequested.Invoke(this, e);
+                    return;
+                }
+
+                var overlay = new SelectElementOverlay(_contentHost, e);
+                _contentHost.Children.Add(overlay);
+            });
+        };
         _webView.UnloadRequested += (_, e) => e.Allow();
 
         _webView.Show();
@@ -234,12 +256,13 @@ public class ServoWebViewControl : Control
 
     private void Cleanup()
     {
-        if (_surface != null)
+        if (_contentHost != null)
         {
-            VisualChildren.Remove(_surface);
-            LogicalChildren.Remove(_surface);
-            _surface = null;
+            VisualChildren.Remove(_contentHost);
+            LogicalChildren.Remove(_contentHost);
+            _contentHost = null;
         }
+        _surface = null;
         _webView?.Dispose(); _webView = null;
         // Engine is NOT disposed here — it's owned by the app, not the control.
         _hwRenderingContext?.Dispose(); _hwRenderingContext = null;

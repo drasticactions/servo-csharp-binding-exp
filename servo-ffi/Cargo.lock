@@ -5591,6 +5591,7 @@ dependencies = [
  "keyboard-types",
  "log",
  "raw-window-handle",
+ "serde_json",
  "servo",
  "surfman",
  "url",

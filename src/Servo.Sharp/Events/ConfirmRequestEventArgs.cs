@@ -1,8 +1,5 @@
 namespace Servo.Sharp;
 
-/// <summary>
-/// Event args for confirm dialogs.
-/// </summary>
 public sealed class ConfirmRequestEventArgs : EventArgs
 {
     public string Message { get; }

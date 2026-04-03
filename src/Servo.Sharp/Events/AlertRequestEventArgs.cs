@@ -1,8 +1,5 @@
 namespace Servo.Sharp;
 
-/// <summary>
-/// Event args for alert dialogs.
-/// </summary>
 public sealed class AlertRequestEventArgs : EventArgs
 {
     public string Message { get; }

@@ -26,6 +26,7 @@ public sealed class ServoWebView : IDisposable
     public event EventHandler<AlertRequestEventArgs>? AlertRequested;
     public event EventHandler<ConfirmRequestEventArgs>? ConfirmRequested;
     public event EventHandler<PromptRequestEventArgs>? PromptRequested;
+    public event EventHandler<SelectElementRequestEventArgs>? SelectElementRequested;
     public event EventHandler<NavigationRequestEventArgs>? NavigationRequested;
     public event EventHandler<PermissionRequestEventArgs>? PermissionRequested;
     public event EventHandler<UnloadRequestEventArgs>? UnloadRequested;
@@ -61,6 +62,7 @@ public sealed class ServoWebView : IDisposable
             on_show_alert = &OnShowAlertImpl,
             on_show_confirm = &OnShowConfirmImpl,
             on_show_prompt = &OnShowPromptImpl,
+            on_show_select_element = &OnShowSelectElementImpl,
             on_request_navigation = &OnRequestNavigationImpl,
             on_request_permission = &OnRequestPermissionImpl,
             on_request_unload = &OnRequestUnloadImpl,
@@ -524,6 +526,22 @@ public sealed class ServoWebView : IDisposable
         var args = new PromptRequestEventArgs(m, d, handle);
         w.PromptRequested?.Invoke(w, args);
         args.Cancel(); // default: cancel if unhandled
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnShowSelectElementImpl(void* ud, byte* optionsJson, long selectedId,
+        int posX, int posY, int posW, int posH, nuint handle)
+    {
+        if (!TryGet(ud, out var w)) return;
+        var json = Marshal.PtrToStringUTF8((nint)optionsJson) ?? "[]";
+        var options = SelectElementRequestEventArgs.ParseOptionsJson(json);
+        int? selected = selectedId >= 0 ? (int)selectedId : null;
+        var args = new SelectElementRequestEventArgs(options, selected, posX, posY, posW, posH, handle);
+        var handler = w.SelectElementRequested;
+        if (handler != null)
+            handler.Invoke(w, args);
+        else
+            args.Dismiss(); // no handler subscribed, dismiss immediately
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
