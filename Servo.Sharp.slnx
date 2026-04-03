@@ -1,5 +1,5 @@
 <Solution>
-  <Folder Name="/src/">
-    <Project Path="src/Servo.Sharp/Servo.Sharp.csproj" />
-  </Folder>
+  <Project Path="src/Servo.Sharp/Servo.Sharp.csproj" />
+  <Project Path="src/Servo.Sharp.Avalonia/Servo.Sharp.Avalonia.csproj" />
+  <Project Path="src/Servo.Sharp.Demo/Servo.Sharp.Demo.csproj" />
 </Solution>
