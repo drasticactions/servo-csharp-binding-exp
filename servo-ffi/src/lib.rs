@@ -1,0 +1,1118 @@
+mod hardware_rendering;
+#[cfg(target_os = "windows")]
+mod composition_rendering;
+mod resources;
+mod types;
+mod waker;
+
+use std::ffi::{CStr, CString, c_char, c_void};
+use std::panic;
+use std::rc::Rc;
+use std::cell::RefCell;
+
+use servo::{
+    AllowOrDenyRequest, ClipboardDelegate, ConsoleLogLevel, Cursor, InputEvent,
+    InputEventId, InputEventResult, JSValue, LoadStatus, MediaSessionEvent,
+    NavigationRequest, PermissionRequest, PrefValue, RenderingContext,
+    Scroll, ScreenGeometry, Servo, ServoBuilder, ServoDelegate, ServoError,
+    SoftwareRenderingContext, StringRequest, WebView, WebViewBuilder, WebViewDelegate,
+    DevicePoint, DeviceIntSize, DeviceIntRect, DeviceIntPoint, DeviceVector2D, WebViewPoint,
+    EmbedderControl, SimpleDialog,
+};
+use servo::input_events::{
+    EditingActionEvent, KeyboardEvent, MouseButton, MouseButtonAction, MouseButtonEvent,
+    MouseMoveEvent, TouchEvent, TouchEventType, TouchId, WheelDelta, WheelEvent, WheelMode,
+};
+use url::Url;
+
+use crate::types::*;
+use crate::waker::FfiEventLoopWaker;
+
+thread_local! {
+    static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
+}
+
+fn set_last_error(msg: String) {
+    LAST_ERROR.with(|e| {
+        *e.borrow_mut() = CString::new(msg).ok();
+    });
+}
+
+fn ffi_catch<F, T>(f: F) -> Option<T>
+where
+    F: FnOnce() -> T + panic::UnwindSafe,
+{
+    match panic::catch_unwind(f) {
+        Ok(val) => Some(val),
+        Err(e) => {
+            let msg = if let Some(s) = e.downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "unknown panic".to_string()
+            };
+            set_last_error(msg);
+            None
+        },
+    }
+}
+
+#[inline]
+fn wv_ref(handle: *mut c_void) -> Option<&'static WebViewHandle> {
+    if handle.is_null() { None } else { Some(unsafe { &*(handle as *mut WebViewHandle) }) }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_last_error() -> *const c_char {
+    LAST_ERROR.with(|e| {
+        match e.borrow().as_ref() {
+            Some(s) => s.as_ptr(),
+            None => std::ptr::null(),
+        }
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_free_string(ptr: *mut c_char) {
+    if !ptr.is_null() {
+        unsafe { drop(CString::from_raw(ptr)); }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_free_bytes(ptr: *mut u8, len: usize) {
+    if !ptr.is_null() {
+        unsafe { drop(Vec::from_raw_parts(ptr, len, len)); }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_new(
+    waker: CEventLoopWaker,
+    resource_path: *const c_char,
+) -> *mut c_void {
+    let result = ffi_catch(std::panic::AssertUnwindSafe(|| {
+        if resource_path.is_null() {
+            resources::RESOURCE_READER.init_from_exe_dir();
+        } else {
+            let path = unsafe { CStr::from_ptr(resource_path) }
+                .to_str()
+                .expect("resource_path must be valid UTF-8");
+            resources::RESOURCE_READER.init_from_path(std::path::PathBuf::from(path));
+        };
+
+        let ffi_waker = FfiEventLoopWaker::new(waker);
+        let servo = ServoBuilder::default()
+            .event_loop_waker(Box::new(ffi_waker))
+            .build();
+        servo.setup_logging();
+
+        Box::into_raw(Box::new(servo)) as *mut c_void
+    }));
+    result.unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_destroy(handle: *mut c_void) {
+    if !handle.is_null() {
+        unsafe { drop(Box::from_raw(handle as *mut Servo)); }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_spin_event_loop(handle: *mut c_void) {
+    if !handle.is_null() {
+        let servo = unsafe { &*(handle as *mut Servo) };
+        servo.spin_event_loop();
+    }
+}
+
+struct FfiServoDelegate {
+    callbacks: ServoCallbacks,
+}
+
+impl FfiServoDelegate {
+    fn ud(&self) -> *mut c_void { self.callbacks.user_data }
+}
+
+impl ServoDelegate for FfiServoDelegate {
+    fn notify_error(&self, error: ServoError) {
+        if let Some(cb) = self.callbacks.on_error {
+            let (code, msg) = match &error {
+                ServoError::LostConnectionWithBackend => (0u8, "Lost connection with backend".to_string()),
+                ServoError::DevtoolsFailedToStart => (1, "DevTools failed to start".to_string()),
+                ServoError::ResponseFailedToSend(e) => (2, format!("Response failed to send: {e:?}")),
+            };
+            if let Ok(c) = CString::new(msg) { cb(self.ud(), code, c.as_ptr()); }
+        }
+    }
+
+    fn notify_devtools_server_started(&self, port: u16, token: String) {
+        if let Some(cb) = self.callbacks.on_devtools_started {
+            if let Ok(c) = CString::new(token) { cb(self.ud(), port, c.as_ptr()); }
+        }
+    }
+
+    fn show_console_message(&self, level: ConsoleLogLevel, message: String) {
+        if let Some(cb) = self.callbacks.on_console_message {
+            let level_u8 = console_level_to_u8(level);
+            if let Ok(c) = CString::new(message) { cb(self.ud(), level_u8, c.as_ptr()); }
+        }
+    }
+
+    fn request_devtools_connection(&self, request: AllowOrDenyRequest) {
+        if let Some(cb) = self.callbacks.on_request_devtools_connection {
+            let result = cb(self.ud());
+            if result == 0 { request.allow(); } else { request.deny(); }
+        }
+        // If no callback, request drops → default deny.
+    }
+}
+
+fn console_level_to_u8(level: ConsoleLogLevel) -> u8 {
+    match level {
+        ConsoleLogLevel::Log => 0u8,
+        ConsoleLogLevel::Debug => 1,
+        ConsoleLogLevel::Info => 2,
+        ConsoleLogLevel::Warn => 3,
+        ConsoleLogLevel::Error => 4,
+        ConsoleLogLevel::Trace => 5,
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_set_delegate(handle: *mut c_void, callbacks: ServoCallbacks) {
+    if handle.is_null() { return; }
+    let servo = unsafe { &*(handle as *mut Servo) };
+    servo.set_delegate(Rc::new(FfiServoDelegate { callbacks }));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_set_preference(
+    handle: *mut c_void, name: *const c_char, value: *const c_char,
+) {
+    if handle.is_null() || name.is_null() || value.is_null() { return; }
+    let servo = unsafe { &*(handle as *mut Servo) };
+    let name_str = unsafe { CStr::from_ptr(name) }.to_str().unwrap_or_default();
+    let value_str = unsafe { CStr::from_ptr(value) }.to_str().unwrap_or_default();
+
+    let pref_value = match value_str {
+        "true" => PrefValue::Bool(true),
+        "false" => PrefValue::Bool(false),
+        s if s.parse::<i64>().is_ok() => PrefValue::Int(s.parse().unwrap()),
+        s if s.parse::<f64>().is_ok() => PrefValue::Float(s.parse().unwrap()),
+        s => PrefValue::Str(s.to_string()),
+    };
+    servo.set_preference(name_str, pref_value);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rendering_context_new_software(width: u32, height: u32) -> *mut c_void {
+    let result = ffi_catch(std::panic::AssertUnwindSafe(|| {
+        let ctx = SoftwareRenderingContext::new(dpi::PhysicalSize::new(width, height))
+            .expect("Failed to create SoftwareRenderingContext");
+        let rc: Rc<dyn RenderingContext> = Rc::new(ctx);
+        Box::into_raw(Box::new(rc)) as *mut c_void
+    }));
+    result.unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rendering_context_new_hardware(width: u32, height: u32) -> *mut c_void {
+    let result = ffi_catch(std::panic::AssertUnwindSafe(|| {
+        let ctx = crate::hardware_rendering::HardwareRenderingContext::new(
+            dpi::PhysicalSize::new(width, height),
+        ).expect("Failed to create HardwareRenderingContext");
+        let rc: Rc<dyn RenderingContext> = Rc::new(ctx);
+        Box::into_raw(Box::new(rc)) as *mut c_void
+    }));
+    result.unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rendering_context_destroy(handle: *mut c_void) {
+    if !handle.is_null() {
+        unsafe { drop(Box::from_raw(handle as *mut Rc<dyn RenderingContext>)); }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rendering_context_resize(handle: *mut c_void, width: u32, height: u32) {
+    if !handle.is_null() {
+        let rc = unsafe { &*(handle as *mut Rc<dyn RenderingContext>) };
+        rc.resize(dpi::PhysicalSize::new(width, height));
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rendering_context_present(handle: *mut c_void) {
+    if !handle.is_null() {
+        let rc = unsafe { &*(handle as *mut Rc<dyn RenderingContext>) };
+        rc.present();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rendering_context_make_current(handle: *mut c_void) -> u8 {
+    if handle.is_null() { return 1; }
+    let rc = unsafe { &*(handle as *mut Rc<dyn RenderingContext>) };
+    match rc.make_current() {
+        Ok(_) => 0,
+        Err(_) => 1,
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rendering_context_read_pixels(
+    handle: *mut c_void,
+    out_width: *mut u32,
+    out_height: *mut u32,
+    out_len: *mut usize,
+) -> *mut u8 {
+    if handle.is_null() {
+        return std::ptr::null_mut();
+    }
+    let rc = unsafe { &*(handle as *mut Rc<dyn RenderingContext>) };
+
+    if let Err(e) = rc.make_current() {
+        set_last_error(format!("Failed to make context current for read_pixels: {e:?}"));
+        unsafe {
+            if !out_width.is_null() { *out_width = 0; }
+            if !out_height.is_null() { *out_height = 0; }
+            if !out_len.is_null() { *out_len = 0; }
+        }
+        return std::ptr::null_mut();
+    }
+
+    let size = rc.size();
+    let rect = servo::DeviceIntRect::from_origin_and_size(
+        servo::DeviceIntPoint::new(0, 0),
+        servo::DeviceIntSize::new(size.width as i32, size.height as i32),
+    );
+
+    match rc.read_to_image(rect) {
+        Some(image) => {
+            let w = image.width();
+            let h = image.height();
+            let pixels = image.into_raw();
+            let len = pixels.len();
+            unsafe {
+                if !out_width.is_null() { *out_width = w; }
+                if !out_height.is_null() { *out_height = h; }
+                if !out_len.is_null() { *out_len = len; }
+            }
+            let mut boxed = pixels.into_boxed_slice();
+            let ptr = boxed.as_mut_ptr();
+            std::mem::forget(boxed);
+            ptr
+        },
+        None => {
+            unsafe {
+                if !out_width.is_null() { *out_width = 0; }
+                if !out_height.is_null() { *out_height = 0; }
+                if !out_len.is_null() { *out_len = 0; }
+            }
+            std::ptr::null_mut()
+        },
+    }
+}
+
+struct FfiWebViewDelegate {
+    callbacks: WebViewCallbacks,
+}
+
+impl FfiWebViewDelegate {
+    #[inline]
+    fn ud(&self) -> *mut c_void {
+        self.callbacks.user_data
+    }
+}
+
+impl WebViewDelegate for FfiWebViewDelegate {
+    fn notify_new_frame_ready(&self, _webview: WebView) {
+        if let Some(cb) = self.callbacks.on_new_frame_ready { cb(self.ud()); }
+    }
+
+    fn notify_load_status_changed(&self, _webview: WebView, status: LoadStatus) {
+        if let Some(cb) = self.callbacks.on_load_status_changed {
+            cb(self.ud(), match status {
+                LoadStatus::Started => 0,
+                LoadStatus::HeadParsed => 1,
+                LoadStatus::Complete => 2,
+            });
+        }
+    }
+
+    fn notify_url_changed(&self, _webview: WebView, url: Url) {
+        if let Some(cb) = self.callbacks.on_url_changed {
+            if let Ok(c) = CString::new(url.as_str()) { cb(self.ud(), c.as_ptr()); }
+        }
+    }
+
+    fn notify_page_title_changed(&self, _webview: WebView, title: Option<String>) {
+        if let Some(cb) = self.callbacks.on_title_changed {
+            match title {
+                Some(t) => { if let Ok(c) = CString::new(t) { cb(self.ud(), c.as_ptr()); } },
+                None => cb(self.ud(), std::ptr::null()),
+            }
+        }
+    }
+
+    fn notify_cursor_changed(&self, _webview: WebView, cursor: Cursor) {
+        if let Some(cb) = self.callbacks.on_cursor_changed {
+            cb(self.ud(), cursor as u8);
+        }
+    }
+
+    fn notify_focus_changed(&self, _webview: WebView, focused: bool) {
+        if let Some(cb) = self.callbacks.on_focus_changed {
+            cb(self.ud(), focused as u8);
+        }
+    }
+
+    fn notify_animating_changed(&self, _webview: WebView, animating: bool) {
+        if let Some(cb) = self.callbacks.on_animating_changed {
+            cb(self.ud(), animating as u8);
+        }
+    }
+
+    fn notify_favicon_changed(&self, _webview: WebView) {
+        if let Some(cb) = self.callbacks.on_favicon_changed { cb(self.ud()); }
+    }
+
+    fn notify_input_event_handled(&self, _webview: WebView, id: InputEventId, result: InputEventResult) {
+        if let Some(cb) = self.callbacks.on_input_event_handled {
+            // InputEventId is an opaque usize internally; transmute to u64.
+            let id_u64: u64 = unsafe { std::mem::transmute::<InputEventId, usize>(id) as u64 };
+            cb(self.ud(), id_u64, result.bits());
+        }
+    }
+
+    fn notify_history_changed(&self, _webview: WebView, entries: Vec<Url>, current: usize) {
+        if let Some(cb) = self.callbacks.on_history_changed {
+            cb(self.ud(), current, entries.len());
+        }
+    }
+
+    fn notify_closed(&self, _webview: WebView) {
+        if let Some(cb) = self.callbacks.on_closed { cb(self.ud()); }
+    }
+
+    fn notify_fullscreen_state_changed(&self, _webview: WebView, fullscreen: bool) {
+        if let Some(cb) = self.callbacks.on_fullscreen_changed {
+            cb(self.ud(), fullscreen as u8);
+        }
+    }
+
+    fn notify_crashed(&self, _webview: WebView, reason: String, backtrace: Option<String>) {
+        if let Some(cb) = self.callbacks.on_crashed {
+            let c_reason = CString::new(reason).unwrap_or_default();
+            let c_bt = backtrace.and_then(|b| CString::new(b).ok());
+            let bt_ptr = c_bt.as_ref().map(|c| c.as_ptr()).unwrap_or(std::ptr::null());
+            cb(self.ud(), c_reason.as_ptr(), bt_ptr);
+        }
+    }
+
+    fn show_console_message(&self, _webview: WebView, level: ConsoleLogLevel, message: String) {
+        if let Some(cb) = self.callbacks.on_console_message {
+            if let Ok(c) = CString::new(message) { cb(self.ud(), console_level_to_u8(level), c.as_ptr()); }
+        }
+    }
+
+    fn request_unload(&self, _webview: WebView, request: AllowOrDenyRequest) {
+        if let Some(cb) = self.callbacks.on_request_unload {
+            let handle = Box::into_raw(Box::new(request)) as usize;
+            cb(self.ud(), handle);
+        }
+        // If no callback, drops → default allow.
+    }
+
+    fn notify_media_session_event(&self, _webview: WebView, event: MediaSessionEvent) {
+        if let Some(cb) = self.callbacks.on_media_session_event {
+            let (event_type, json) = match &event {
+                MediaSessionEvent::SetMetadata(m) => {
+                    (0u8, format!("{{\"title\":\"{}\",\"artist\":\"{}\",\"album\":\"{}\"}}", m.title, m.artist, m.album))
+                },
+                MediaSessionEvent::PlaybackStateChange(s) => {
+                    let state = match s {
+                        servo::MediaSessionPlaybackState::None_ => "none",
+                        servo::MediaSessionPlaybackState::Playing => "playing",
+                        servo::MediaSessionPlaybackState::Paused => "paused",
+                    };
+                    (1, format!("{{\"state\":\"{state}\"}}" ))
+                },
+                MediaSessionEvent::SetPositionState(p) => {
+                    (2, format!("{{\"duration\":{},\"playbackRate\":{},\"position\":{}}}", p.duration, p.playback_rate, p.position))
+                },
+            };
+            if let Ok(c) = CString::new(json) { cb(self.ud(), event_type, c.as_ptr()); }
+        }
+    }
+
+    fn screen_geometry(&self, _webview: WebView) -> Option<ScreenGeometry> {
+        if let Some(cb) = self.callbacks.get_screen_geometry {
+            let mut geo = CScreenGeometry::default();
+            if cb(self.ud(), &mut geo) != 0 {
+                return Some(ScreenGeometry {
+                    size: DeviceIntSize::new(geo.size_width, geo.size_height),
+                    available_size: DeviceIntSize::new(geo.available_width, geo.available_height),
+                    window_rect: DeviceIntRect::from_origin_and_size(
+                        DeviceIntPoint::new(geo.window_x, geo.window_y),
+                        DeviceIntSize::new(geo.window_width, geo.window_height),
+                    ),
+                });
+            }
+        }
+        None
+    }
+
+    fn show_embedder_control(&self, _webview: WebView, control: EmbedderControl) {
+        match control {
+            EmbedderControl::SimpleDialog(dialog) => {
+                match dialog {
+                    SimpleDialog::Alert(alert) => {
+                        if let Some(cb) = self.callbacks.on_show_alert {
+                            let handle = Box::into_raw(Box::new(alert)) as usize;
+                            let alert_ref = unsafe { &*(handle as *const servo::AlertDialog) };
+                            if let Ok(c) = CString::new(alert_ref.message()) {
+                                cb(self.ud(), c.as_ptr(), handle);
+                            } else {
+                                // Can't form message, just dismiss
+                                let _ = unsafe { Box::from_raw(handle as *mut servo::AlertDialog) };
+                            }
+                        }
+                    },
+                    SimpleDialog::Confirm(confirm) => {
+                        if let Some(cb) = self.callbacks.on_show_confirm {
+                            let handle = Box::into_raw(Box::new(confirm)) as usize;
+                            let confirm_ref = unsafe { &*(handle as *const servo::ConfirmDialog) };
+                            if let Ok(c) = CString::new(confirm_ref.message()) {
+                                cb(self.ud(), c.as_ptr(), handle);
+                            } else {
+                                let _ = unsafe { Box::from_raw(handle as *mut servo::ConfirmDialog) };
+                            }
+                        }
+                    },
+                    SimpleDialog::Prompt(prompt) => {
+                        if let Some(cb) = self.callbacks.on_show_prompt {
+                            let handle = Box::into_raw(Box::new(prompt)) as usize;
+                            let prompt_ref = unsafe { &*(handle as *const servo::PromptDialog) };
+                            let msg_ok = CString::new(prompt_ref.message());
+                            let val_ok = CString::new(prompt_ref.current_value());
+                            if let (Ok(msg), Ok(val)) = (msg_ok, val_ok) {
+                                cb(self.ud(), msg.as_ptr(), val.as_ptr(), handle);
+                            } else {
+                                let _ = unsafe { Box::from_raw(handle as *mut servo::PromptDialog) };
+                            }
+                        }
+                    },
+                }
+            },
+            _ => {}, // Other embedder controls not yet handled.
+        }
+    }
+
+    fn request_navigation(&self, _webview: WebView, request: NavigationRequest) {
+        if let Some(cb) = self.callbacks.on_request_navigation {
+            let url_str = request.url.as_str().to_string();
+            let handle = Box::into_raw(Box::new(request)) as usize;
+            if let Ok(c) = CString::new(url_str) {
+                cb(self.ud(), c.as_ptr(), handle);
+            } else {
+                // Can't pass URL, allow by default.
+                let req = unsafe { *Box::from_raw(handle as *mut NavigationRequest) };
+                req.allow();
+            }
+        }
+        // If no callback is set, NavigationRequest drops and defaults to allow.
+    }
+
+    fn request_permission(&self, _webview: WebView, request: PermissionRequest) {
+        if let Some(cb) = self.callbacks.on_request_permission {
+            let feature = request.feature() as u8;
+            let handle = Box::into_raw(Box::new(request)) as usize;
+            cb(self.ud(), feature, handle);
+        }
+        // If no callback, PermissionRequest drops and defaults to deny.
+    }
+}
+
+struct WebViewHandle {
+    webview: WebView,
+    _rendering_context: Rc<dyn RenderingContext>,
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_new(
+    servo_handle: *mut c_void,
+    rendering_ctx_handle: *mut c_void,
+    callbacks: WebViewCallbacks,
+    clipboard: ClipboardCallbacks,
+    initial_url: *const c_char,
+) -> *mut c_void {
+    if servo_handle.is_null() || rendering_ctx_handle.is_null() {
+        set_last_error("servo_handle and rendering_ctx_handle must not be null".into());
+        return std::ptr::null_mut();
+    }
+    let result = ffi_catch(std::panic::AssertUnwindSafe(|| {
+        let servo = unsafe { &*(servo_handle as *mut Servo) };
+        let rc = unsafe { &*(rendering_ctx_handle as *mut Rc<dyn RenderingContext>) };
+        let delegate = FfiWebViewDelegate { callbacks };
+        let mut builder = WebViewBuilder::new(servo, rc.clone())
+            .delegate(Rc::new(delegate));
+        // Only set a custom clipboard delegate if any callback is provided.
+        // Otherwise Servo uses its built-in clipboard support.
+        if clipboard.get_text.is_some() || clipboard.set_text.is_some() || clipboard.clear.is_some() {
+            builder = builder.clipboard_delegate(Rc::new(FfiClipboardDelegate { callbacks: clipboard }));
+        }
+        if !initial_url.is_null() {
+            let url_str = unsafe { CStr::from_ptr(initial_url) }.to_str().unwrap_or_default();
+            if let Ok(url) = Url::parse(url_str) { builder = builder.url(url); }
+        }
+        let webview = builder.build();
+        Box::into_raw(Box::new(WebViewHandle { webview, _rendering_context: rc.clone() })) as *mut c_void
+    }));
+    result.unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_destroy(handle: *mut c_void) {
+    if !handle.is_null() {
+        unsafe { drop(Box::from_raw(handle as *mut WebViewHandle)); }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_load_url(handle: *mut c_void, url: *const c_char) {
+    if let (Some(wv), false) = (wv_ref(handle), url.is_null()) {
+        let s = unsafe { CStr::from_ptr(url) }.to_str().unwrap_or_default();
+        if let Ok(u) = Url::parse(s) { wv.webview.load(u); }
+        else { set_last_error(format!("Invalid URL: {s}")); }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_reload(handle: *mut c_void) {
+    if let Some(wv) = wv_ref(handle) { wv.webview.reload(); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_go_back(handle: *mut c_void, steps: usize) {
+    if let Some(wv) = wv_ref(handle) { wv.webview.go_back(steps.max(1)); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_go_forward(handle: *mut c_void, steps: usize) {
+    if let Some(wv) = wv_ref(handle) { wv.webview.go_forward(steps.max(1)); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_paint(handle: *mut c_void) {
+    if let Some(wv) = wv_ref(handle) { wv.webview.paint(); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_resize(handle: *mut c_void, width: u32, height: u32) {
+    if let Some(wv) = wv_ref(handle) { wv.webview.resize(dpi::PhysicalSize::new(width, height)); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_focus(handle: *mut c_void) {
+    if let Some(wv) = wv_ref(handle) { wv.webview.focus(); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_blur(handle: *mut c_void) {
+    if let Some(wv) = wv_ref(handle) { wv.webview.blur(); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_show(handle: *mut c_void) {
+    if let Some(wv) = wv_ref(handle) { wv.webview.show(); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_hide(handle: *mut c_void) {
+    if let Some(wv) = wv_ref(handle) { wv.webview.hide(); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_set_hidpi_scale(handle: *mut c_void, scale: f32) {
+    if let Some(wv) = wv_ref(handle) {
+        use euclid::Scale;
+        wv.webview.set_hidpi_scale_factor(Scale::new(scale));
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_get_url(handle: *mut c_void) -> *mut c_char {
+    wv_ref(handle)
+        .and_then(|wv| wv.webview.url())
+        .and_then(|url| CString::new(url.as_str()).ok())
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_get_title(handle: *mut c_void) -> *mut c_char {
+    wv_ref(handle)
+        .and_then(|wv| wv.webview.page_title())
+        .and_then(|t| CString::new(t).ok())
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_get_load_status(handle: *mut c_void) -> u8 {
+    wv_ref(handle).map(|wv| match wv.webview.load_status() {
+        LoadStatus::Started => 0,
+        LoadStatus::HeadParsed => 1,
+        LoadStatus::Complete => 2,
+    }).unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_get_cursor(handle: *mut c_void) -> u8 {
+    wv_ref(handle).map(|wv| wv.webview.cursor() as u8).unwrap_or(1) // 1 = Default
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_is_focused(handle: *mut c_void) -> u8 {
+    wv_ref(handle).map(|wv| wv.webview.focused() as u8).unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_is_animating(handle: *mut c_void) -> u8 {
+    wv_ref(handle).map(|wv| wv.webview.clone().animating() as u8).unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_can_go_back(handle: *mut c_void) -> u8 {
+    wv_ref(handle).map(|wv| wv.webview.can_go_back() as u8).unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_can_go_forward(handle: *mut c_void) -> u8 {
+    wv_ref(handle).map(|wv| wv.webview.can_go_forward() as u8).unwrap_or(0)
+}
+
+/// Map a DOM code string to a Key::Named variant for non-printable keys.
+fn code_str_to_named_key(code: &str) -> servo::Key {
+    use servo::{Key, NamedKey};
+    Key::Named(match code {
+        "Backspace" => NamedKey::Backspace,
+        "Tab" => NamedKey::Tab,
+        "Enter" => NamedKey::Enter,
+        "Escape" => NamedKey::Escape,
+        "Delete" => NamedKey::Delete,
+        "ArrowUp" => NamedKey::ArrowUp,
+        "ArrowDown" => NamedKey::ArrowDown,
+        "ArrowLeft" => NamedKey::ArrowLeft,
+        "ArrowRight" => NamedKey::ArrowRight,
+        "Home" => NamedKey::Home,
+        "End" => NamedKey::End,
+        "PageUp" => NamedKey::PageUp,
+        "PageDown" => NamedKey::PageDown,
+        "Insert" => NamedKey::Insert,
+        "Space" => return Key::Character(" ".into()),
+        "ShiftLeft" | "ShiftRight" => NamedKey::Shift,
+        "ControlLeft" | "ControlRight" => NamedKey::Control,
+        "AltLeft" | "AltRight" => NamedKey::Alt,
+        "MetaLeft" | "MetaRight" => NamedKey::Meta,
+        "CapsLock" => NamedKey::CapsLock,
+        "NumLock" => NamedKey::NumLock,
+        "ScrollLock" => NamedKey::ScrollLock,
+        "F1" => NamedKey::F1, "F2" => NamedKey::F2, "F3" => NamedKey::F3,
+        "F4" => NamedKey::F4, "F5" => NamedKey::F5, "F6" => NamedKey::F6,
+        "F7" => NamedKey::F7, "F8" => NamedKey::F8, "F9" => NamedKey::F9,
+        "F10" => NamedKey::F10, "F11" => NamedKey::F11, "F12" => NamedKey::F12,
+        "ContextMenu" => NamedKey::ContextMenu,
+        "PrintScreen" => NamedKey::PrintScreen,
+        "Pause" => NamedKey::Pause,
+        _ => NamedKey::Unidentified,
+    })
+}
+
+fn event_id_to_u64(id: InputEventId) -> u64 {
+    unsafe { std::mem::transmute::<InputEventId, usize>(id) as u64 }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_send_mouse_button(
+    handle: *mut c_void, action: u8, button: u16, x: f32, y: f32,
+) -> u64 {
+    let Some(wv) = wv_ref(handle) else { return 0; };
+    let action = match action { 0 => MouseButtonAction::Down, _ => MouseButtonAction::Up };
+    let button = MouseButton::from(button as u64);
+    let point = WebViewPoint::from(DevicePoint::new(x, y));
+    let event = InputEvent::MouseButton(MouseButtonEvent::new(action, button, point));
+    event_id_to_u64(wv.webview.notify_input_event(event))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_send_mouse_move(handle: *mut c_void, x: f32, y: f32) -> u64 {
+    let Some(wv) = wv_ref(handle) else { return 0; };
+    let point = WebViewPoint::from(DevicePoint::new(x, y));
+    let event = InputEvent::MouseMove(MouseMoveEvent::new(point));
+    event_id_to_u64(wv.webview.notify_input_event(event))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_send_key_event(
+    handle: *mut c_void,
+    state: u8,
+    key_char: u32,
+    key_code: *const c_char,
+    modifiers: u32,
+) -> u64 {
+    let Some(wv) = wv_ref(handle) else { return 0; };
+
+    use servo::{Key, KeyState, Code, Modifiers, NamedKey};
+
+    let key_state = match state { 0 => KeyState::Down, _ => KeyState::Up };
+
+    // Parse the Code from the string.
+    let code_str = if !key_code.is_null() {
+        unsafe { CStr::from_ptr(key_code) }.to_str().unwrap_or("")
+    } else {
+        ""
+    };
+    let code = if !code_str.is_empty() {
+        code_str.parse::<Code>().unwrap_or(Code::Unidentified)
+    } else {
+        Code::Unidentified
+    };
+
+    // Parse the Key: printable character from key_char, or named key from code string.
+    let key = if key_char != 0 {
+        if let Some(ch) = char::from_u32(key_char) {
+            Key::Character(ch.to_string().into())
+        } else {
+            Key::Named(NamedKey::Unidentified)
+        }
+    } else {
+        code_str_to_named_key(code_str)
+    };
+
+    let mods = Modifiers::from_bits_truncate(modifiers);
+
+    let kb_event = keyboard_types::KeyboardEvent {
+        state: key_state,
+        key,
+        code,
+        location: keyboard_types::Location::Standard,
+        modifiers: mods,
+        repeat: false,
+        is_composing: false,
+    };
+    let event = InputEvent::Keyboard(KeyboardEvent::new(kb_event));
+    event_id_to_u64(wv.webview.notify_input_event(event))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_send_wheel(
+    handle: *mut c_void,
+    delta_x: f64, delta_y: f64, delta_z: f64,
+    mode: u8, x: f32, y: f32,
+) -> u64 {
+    let Some(wv) = wv_ref(handle) else { return 0; };
+    let wheel_mode = match mode {
+        1 => WheelMode::DeltaLine,
+        2 => WheelMode::DeltaPage,
+        _ => WheelMode::DeltaPixel,
+    };
+    let delta = WheelDelta { x: delta_x, y: delta_y, z: delta_z, mode: wheel_mode };
+    let point = WebViewPoint::from(DevicePoint::new(x, y));
+    let event = InputEvent::Wheel(WheelEvent::new(delta, point));
+    event_id_to_u64(wv.webview.notify_input_event(event))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_send_scroll(
+    handle: *mut c_void,
+    delta_x: f32, delta_y: f32, point_x: f32, point_y: f32,
+) {
+    if let Some(wv) = wv_ref(handle) {
+        let scroll = Scroll::Delta(servo::WebViewVector::Device(DeviceVector2D::new(delta_x, delta_y)));
+        let point = WebViewPoint::from(DevicePoint::new(point_x, point_y));
+        wv.webview.notify_scroll_event(scroll, point);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_send_touch(
+    handle: *mut c_void, event_type: u8, touch_id: i32, x: f32, y: f32,
+) -> u64 {
+    let Some(wv) = wv_ref(handle) else { return 0; };
+    let touch_type = match event_type {
+        0 => TouchEventType::Down,
+        1 => TouchEventType::Move,
+        2 => TouchEventType::Up,
+        _ => TouchEventType::Cancel,
+    };
+    let point = WebViewPoint::from(DevicePoint::new(x, y));
+    let event = InputEvent::Touch(TouchEvent::new(touch_type, TouchId(touch_id), point));
+    event_id_to_u64(wv.webview.notify_input_event(event))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_send_editing_action(handle: *mut c_void, action: u8) -> u64 {
+    let Some(wv) = wv_ref(handle) else { return 0; };
+    let editing = match action {
+        0 => EditingActionEvent::Copy,
+        1 => EditingActionEvent::Cut,
+        _ => EditingActionEvent::Paste,
+    };
+    let event = InputEvent::EditingAction(editing);
+    event_id_to_u64(wv.webview.notify_input_event(event))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_set_page_zoom(handle: *mut c_void, zoom: f32) {
+    if let Some(wv) = wv_ref(handle) { wv.webview.set_page_zoom(zoom); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_get_page_zoom(handle: *mut c_void) -> f32 {
+    wv_ref(handle).map(|wv| wv.webview.page_zoom()).unwrap_or(1.0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_exit_fullscreen(handle: *mut c_void) {
+    if let Some(wv) = wv_ref(handle) { wv.webview.exit_fullscreen(); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_set_throttled(handle: *mut c_void, throttled: u8) {
+    if let Some(wv) = wv_ref(handle) { wv.webview.set_throttled(throttled != 0); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_evaluate_javascript(
+    handle: *mut c_void,
+    script: *const c_char,
+    callback: extern "C" fn(*mut c_void, *const c_char, *const c_char),
+    callback_data: *mut c_void,
+) {
+    let Some(wv) = wv_ref(handle) else { return; };
+    if script.is_null() { return; }
+    let script_str = unsafe { CStr::from_ptr(script) }.to_str().unwrap_or_default().to_string();
+
+    // callback_data is a raw pointer we pass through; make it Send.
+    let cb_data = callback_data as usize;
+    let cb = callback;
+
+    wv.webview.evaluate_javascript(script_str, move |result| {
+        let ud = cb_data as *mut c_void;
+        match result {
+            Ok(value) => {
+                let json = jsvalue_to_json(&value);
+                if let Ok(c) = CString::new(json) {
+                    cb(ud, c.as_ptr(), std::ptr::null());
+                }
+            },
+            Err(err) => {
+                let msg = format!("{err:?}");
+                if let Ok(c) = CString::new(msg) {
+                    cb(ud, std::ptr::null(), c.as_ptr());
+                }
+            },
+        }
+    });
+}
+
+fn jsvalue_to_json(val: &JSValue) -> String {
+    match val {
+        JSValue::Undefined => "undefined".to_string(),
+        JSValue::Null => "null".to_string(),
+        JSValue::Boolean(b) => b.to_string(),
+        JSValue::Number(n) => n.to_string(),
+        JSValue::String(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
+        JSValue::Array(arr) => {
+            let items: Vec<String> = arr.iter().map(jsvalue_to_json).collect();
+            format!("[{}]", items.join(","))
+        },
+        JSValue::Object(map) => {
+            let items: Vec<String> = map.iter()
+                .map(|(k, v)| format!("\"{}\":{}", k.replace('"', "\\\""), jsvalue_to_json(v)))
+                .collect();
+            format!("{{{}}}", items.join(","))
+        },
+        JSValue::Element(s) | JSValue::ShadowRoot(s) | JSValue::Frame(s) | JSValue::Window(s) => {
+            format!("\"{}\"", s)
+        },
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dialog_alert_dismiss(dialog_handle: usize) {
+    if dialog_handle == 0 { return; }
+    let alert = unsafe { *Box::from_raw(dialog_handle as *mut servo::AlertDialog) };
+    alert.confirm();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dialog_confirm_respond(dialog_handle: usize, confirmed: u8) {
+    if dialog_handle == 0 { return; }
+    let confirm = unsafe { *Box::from_raw(dialog_handle as *mut servo::ConfirmDialog) };
+    if confirmed != 0 { confirm.confirm(); } else { confirm.dismiss(); }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn dialog_prompt_respond(dialog_handle: usize, value: *const c_char) {
+    if dialog_handle == 0 { return; }
+    let mut prompt = unsafe { *Box::from_raw(dialog_handle as *mut servo::PromptDialog) };
+    if value.is_null() {
+        prompt.dismiss();
+    } else {
+        let val = unsafe { CStr::from_ptr(value) }.to_str().unwrap_or_default();
+        prompt.set_current_value(val);
+        prompt.confirm();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn navigation_request_allow(request_handle: usize) {
+    if request_handle == 0 { return; }
+    let req = unsafe { *Box::from_raw(request_handle as *mut NavigationRequest) };
+    req.allow();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn navigation_request_deny(request_handle: usize) {
+    if request_handle == 0 { return; }
+    let req = unsafe { *Box::from_raw(request_handle as *mut NavigationRequest) };
+    req.deny();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn permission_request_allow(request_handle: usize) {
+    if request_handle == 0 { return; }
+    let req = unsafe { *Box::from_raw(request_handle as *mut PermissionRequest) };
+    req.allow();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn permission_request_deny(request_handle: usize) {
+    if request_handle == 0 { return; }
+    let req = unsafe { *Box::from_raw(request_handle as *mut PermissionRequest) };
+    req.deny();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn unload_request_allow(request_handle: usize) {
+    if request_handle == 0 { return; }
+    let req = unsafe { *Box::from_raw(request_handle as *mut AllowOrDenyRequest) };
+    req.allow();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn unload_request_deny(request_handle: usize) {
+    if request_handle == 0 { return; }
+    let req = unsafe { *Box::from_raw(request_handle as *mut AllowOrDenyRequest) };
+    req.deny();
+}
+
+struct FfiClipboardDelegate {
+    callbacks: ClipboardCallbacks,
+}
+
+impl ClipboardDelegate for FfiClipboardDelegate {
+    fn clear(&self, _webview: WebView) {
+        if let Some(cb) = self.callbacks.clear {
+            cb(self.callbacks.user_data);
+        }
+    }
+
+    fn get_text(&self, _webview: WebView, request: StringRequest) {
+        if let Some(cb) = self.callbacks.get_text {
+            let ptr = cb(self.callbacks.user_data);
+            if ptr.is_null() {
+                request.failure("Clipboard empty".into());
+            } else {
+                let text = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or_default().to_string();
+                unsafe { drop(CString::from_raw(ptr)); }
+                request.success(text);
+            }
+        }
+        // If no callback, request drops → failure response.
+    }
+
+    fn set_text(&self, _webview: WebView, new_contents: String) {
+        if let Some(cb) = self.callbacks.set_text {
+            if let Ok(c) = CString::new(new_contents) {
+                cb(self.callbacks.user_data, c.as_ptr());
+            }
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_take_screenshot(
+    handle: *mut c_void,
+    callback: extern "C" fn(*mut c_void, *const u8, u32, u32, usize),
+    callback_data: *mut c_void,
+) {
+    let Some(wv) = wv_ref(handle) else { return; };
+    let cb_data = callback_data as usize;
+    let cb = callback;
+    wv.webview.take_screenshot(None, move |result| {
+        let ud = cb_data as *mut c_void;
+        match result {
+            Ok(image) => {
+                let w = image.width();
+                let h = image.height();
+                let data = image.as_raw();
+                cb(ud, data.as_ptr(), w, h, data.len());
+            },
+            Err(_) => {
+                cb(ud, std::ptr::null(), 0, 0, 0);
+            },
+        }
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_get_favicon(
+    handle: *mut c_void,
+    out_width: *mut u32,
+    out_height: *mut u32,
+    out_format: *mut u8,
+    out_len: *mut usize,
+) -> *mut u8 {
+    let Some(wv) = wv_ref(handle) else { return std::ptr::null_mut(); };
+    match wv.webview.favicon() {
+        Some(image) => {
+            let data = image.data().to_vec();
+            let len = data.len();
+            unsafe {
+                if !out_width.is_null() { *out_width = image.width; }
+                if !out_height.is_null() { *out_height = image.height; }
+                if !out_format.is_null() {
+                    *out_format = match image.format {
+                        servo::PixelFormat::K8 => 0,
+                        servo::PixelFormat::KA8 => 1,
+                        servo::PixelFormat::RGB8 => 2,
+                        servo::PixelFormat::RGBA8 => 3,
+                        servo::PixelFormat::BGRA8 => 4,
+                    };
+                }
+                if !out_len.is_null() { *out_len = len; }
+            }
+            let mut boxed = data.into_boxed_slice();
+            let ptr = boxed.as_mut_ptr();
+            std::mem::forget(boxed);
+            ptr
+        },
+        None => {
+            unsafe {
+                if !out_width.is_null() { *out_width = 0; }
+                if !out_height.is_null() { *out_height = 0; }
+                if !out_format.is_null() { *out_format = 0; }
+                if !out_len.is_null() { *out_len = 0; }
+            }
+            std::ptr::null_mut()
+        },
+    }
+}

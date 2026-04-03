@@ -1,0 +1,48 @@
+[package]
+name = "servo-ffi"
+version = "0.1.0"
+edition = "2024"
+description = "C FFI bindings for the Servo web engine"
+license = "MPL-2.0"
+rust-version = "1.86.0"
+
+[lib]
+name = "servo_ffi"
+crate-type = ["cdylib"]
+
+[dependencies]
+servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit"] }
+dpi = "0.1"
+euclid = "0.22"
+gleam = "0.15"
+glow = "0.16.0"
+keyboard-types = { version = "0.8.3", features = ["serde"] }
+surfman = { version = "0.11.0", features = ["chains"] }
+url = "2"
+log = "0.4"
+env_logger = "0.11"
+raw-window-handle = "0.6"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "clipboard", "no-wgl"] }
+surfman = { version = "0.11.0", features = ["chains", "sm-angle-default"] }
+windows = { version = "0.61", features = [
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+] }
+
+[target.'cfg(all(target_os = "linux", not(target_env = "ohos")))'.dependencies]
+servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "clipboard"] }
+surfman = { version = "0.11.0", features = ["chains", "sm-x11"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "clipboard"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit"] }
+surfman = { version = "0.11.0", features = ["chains", "sm-angle-default"] }
+
+[build-dependencies]
+cbindgen = "0.27"
+csbindgen = "1.9.7"
