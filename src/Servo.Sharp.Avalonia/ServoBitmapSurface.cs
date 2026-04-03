@@ -11,13 +11,11 @@ namespace Servo.Sharp.Avalonia;
 internal class ServoBitmapSurface : Control
 {
     private WriteableBitmap? _bitmap;
-    private HardwareRenderingContext? _hwContext;
-    private SoftwareRenderingContext? _swContext;
+    private RenderingContext? _renderingContext;
 
-    public void SetRenderingContext(HardwareRenderingContext? hw, SoftwareRenderingContext? sw)
+    public void SetRenderingContext(RenderingContext context)
     {
-        _hwContext = hw;
-        _swContext = sw;
+        _renderingContext = context;
     }
 
     public void MarkFrameReady()
@@ -27,7 +25,7 @@ internal class ServoBitmapSurface : Control
 
     public override unsafe void Render(DrawingContext context)
     {
-        var pixels = _hwContext?.ReadPixels() ?? _swContext?.ReadPixels();
+        var pixels = _renderingContext?.ReadPixels();
         if (pixels == null || pixels.Data.Length == 0)
         {
             context.FillRectangle(Brushes.Black, new Rect(Bounds.Size));

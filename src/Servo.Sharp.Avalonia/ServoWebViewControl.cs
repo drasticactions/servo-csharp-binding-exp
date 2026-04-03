@@ -89,8 +89,7 @@ public class ServoWebViewControl : Control
     private bool _canGoBack;
     private bool _canGoForward;
 
-    private HardwareRenderingContext? _hwRenderingContext;
-    private SoftwareRenderingContext? _swRenderingContext;
+    private RenderingContext? _renderingContext;
     private ServoWebView? _webView;
     private ServoBitmapSurface? _surface;
     private Panel? _contentHost;
@@ -176,17 +175,11 @@ public class ServoWebViewControl : Control
         var (pw, ph) = GetPixelSize(scaling);
 
         var initialUrl = Source?.AbsoluteUri;
-        if (RenderingBackend == ServoRenderingBackend.Hardware)
-        {
-            _hwRenderingContext = new HardwareRenderingContext(pw, ph);
-            _webView = new ServoWebView(engine, _hwRenderingContext, initialUrl);
-        }
-        else
-        {
-            _swRenderingContext = new SoftwareRenderingContext(pw, ph);
-            _webView = new ServoWebView(engine, _swRenderingContext, initialUrl);
-        }
-        _surface!.SetRenderingContext(_hwRenderingContext, _swRenderingContext);
+        _renderingContext = RenderingBackend == ServoRenderingBackend.Hardware
+            ? new HardwareRenderingContext(pw, ph)
+            : new SoftwareRenderingContext(pw, ph);
+        _webView = new ServoWebView(engine, _renderingContext, initialUrl);
+        _surface!.SetRenderingContext(_renderingContext);
         _webView.SetHidpiScale((float)scaling);
 
         _webView.NewFrameReady += OnNewFrameReady;
@@ -265,8 +258,7 @@ public class ServoWebViewControl : Control
         _surface = null;
         _webView?.Dispose(); _webView = null;
         // Engine is NOT disposed here — it's owned by the app, not the control.
-        _hwRenderingContext?.Dispose(); _hwRenderingContext = null;
-        _swRenderingContext?.Dispose(); _swRenderingContext = null;
+        _renderingContext?.Dispose(); _renderingContext = null;
     }
 
     private void OnNewFrameReady(object? sender, EventArgs e)
@@ -275,8 +267,7 @@ public class ServoWebViewControl : Control
         {
             if (_webView == null || _surface == null) return;
             _webView.Paint();
-            _hwRenderingContext?.Present();
-            _swRenderingContext?.Present();
+            _renderingContext?.Present();
             _surface.MarkFrameReady();
         }, DispatcherPriority.Render);
     }

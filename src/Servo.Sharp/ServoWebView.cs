@@ -32,10 +32,7 @@ public sealed class ServoWebView : IDisposable
     public event EventHandler<UnloadRequestEventArgs>? UnloadRequested;
     public event EventHandler<MediaSessionEventArgs>? MediaSessionEvent;
 
-    public ServoWebView(ServoEngine engine, SoftwareRenderingContext renderingContext, string? initialUrl = null)
-        : this(engine, renderingContext.Handle, initialUrl) { }
-
-    public ServoWebView(ServoEngine engine, HardwareRenderingContext renderingContext, string? initialUrl = null)
+    public unsafe ServoWebView(ServoEngine engine, RenderingContext renderingContext, string? initialUrl = null)
         : this(engine, renderingContext.Handle, initialUrl) { }
 
     private unsafe ServoWebView(ServoEngine engine, nint renderingCtxHandle, string? initialUrl)
