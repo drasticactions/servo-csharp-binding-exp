@@ -26,6 +26,7 @@ internal class ServoBitmapSurface : Control
     public override unsafe void Render(DrawingContext context)
     {
         var pixels = _renderingContext?.ReadPixels();
+        _renderingContext?.Present();
         if (pixels == null || pixels.Data.Length == 0)
         {
             context.FillRectangle(Brushes.Black, new Rect(Bounds.Size));

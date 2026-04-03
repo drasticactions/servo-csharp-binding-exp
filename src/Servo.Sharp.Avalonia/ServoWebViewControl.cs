@@ -267,7 +267,6 @@ public class ServoWebViewControl : Control
         {
             if (_webView == null || _surface == null) return;
             _webView.Paint();
-            _renderingContext?.Present();
             _surface.MarkFrameReady();
         }, DispatcherPriority.Render);
     }
@@ -330,6 +329,12 @@ public class ServoWebViewControl : Control
         var pos = e.GetPosition(this);
         var s = GetScaling();
         _webView.SendMouseMove((float)(pos.X * s), (float)(pos.Y * s));
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        _webView?.SendMouseLeftViewport();
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)

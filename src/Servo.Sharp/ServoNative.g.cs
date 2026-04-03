@@ -135,6 +135,9 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "webview_send_mouse_move", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern ulong webview_send_mouse_move(void* handle, float x, float y);
 
+        [DllImport(__DllName, EntryPoint = "webview_send_mouse_left_viewport", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern ulong webview_send_mouse_left_viewport(void* handle);
+
         [DllImport(__DllName, EntryPoint = "webview_send_key_event", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern ulong webview_send_key_event(void* handle, byte state, uint key_char, byte* key_code, uint modifiers);
 
@@ -192,11 +195,6 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "unload_request_deny", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void unload_request_deny(nuint request_handle);
 
-        /// <summary>
-        ///  Respond to a select element prompt.
-        ///  If `selected_id` &gt;= 0, selects that option and submits.
-        ///  If `selected_id` &lt; 0, dismisses (drops with current selection).
-        /// </summary>
         [DllImport(__DllName, EntryPoint = "select_element_respond", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void select_element_respond(nuint request_handle, long selected_id);
 
@@ -251,11 +249,6 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, byte, nuint, void> on_request_permission;
         public delegate* unmanaged[Cdecl]<void*, nuint, void> on_request_unload;
         public delegate* unmanaged[Cdecl]<void*, byte, byte*, void> on_media_session_event;
-        /// <summary>
-        ///  Callback for `&lt;select&gt;` element activation.
-        ///  Parameters: user_data, options_json (UTF-8 C string), selected_option_id (-1 if none),
-        ///  position_x, position_y, position_width, position_height (device pixels), handle
-        /// </summary>
         public delegate* unmanaged[Cdecl]<void*, byte*, long, int, int, int, int, nuint, void> on_show_select_element;
         public delegate* unmanaged[Cdecl]<void*, CScreenGeometry*, byte> get_screen_geometry;
     }

@@ -22,7 +22,8 @@ use servo::{
 use servo::SelectElementOptionOrOptgroup;
 use servo::input_events::{
     EditingActionEvent, KeyboardEvent, MouseButton, MouseButtonAction, MouseButtonEvent,
-    MouseMoveEvent, TouchEvent, TouchEventType, TouchId, WheelDelta, WheelEvent, WheelMode,
+    MouseLeftViewportEvent, MouseMoveEvent, TouchEvent, TouchEventType, TouchId, WheelDelta,
+    WheelEvent, WheelMode,
 };
 use url::Url;
 
@@ -813,6 +814,13 @@ pub extern "C" fn webview_send_mouse_move(handle: *mut c_void, x: f32, y: f32) -
     let Some(wv) = wv_ref(handle) else { return 0; };
     let point = WebViewPoint::from(DevicePoint::new(x, y));
     let event = InputEvent::MouseMove(MouseMoveEvent::new(point));
+    event_id_to_u64(wv.webview.notify_input_event(event))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_send_mouse_left_viewport(handle: *mut c_void) -> u64 {
+    let Some(wv) = wv_ref(handle) else { return 0; };
+    let event = InputEvent::MouseLeftViewport(MouseLeftViewportEvent::default());
     event_id_to_u64(wv.webview.notify_input_event(event))
 }
 

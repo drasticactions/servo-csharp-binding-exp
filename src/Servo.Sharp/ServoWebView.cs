@@ -255,6 +255,12 @@ public sealed class ServoWebView : IDisposable
         return ServoNative.webview_send_mouse_move((void*)_handle, x, y);
     }
 
+    public unsafe ulong SendMouseLeftViewport()
+    {
+        ThrowIfDisposed();
+        return ServoNative.webview_send_mouse_left_viewport((void*)_handle);
+    }
+
     /// <summary>
     /// Send a keyboard event.
     /// </summary>
