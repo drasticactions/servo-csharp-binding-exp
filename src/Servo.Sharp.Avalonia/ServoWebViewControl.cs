@@ -181,6 +181,7 @@ public class ServoWebViewControl : Control
             _swRenderingContext = new SoftwareRenderingContext(pw, ph);
             _webView = new ServoWebView(engine, _swRenderingContext, initialUrl);
         }
+        _surface!.SetRenderingContext(_hwRenderingContext, _swRenderingContext);
         _webView.SetHidpiScale((float)scaling);
 
         _webView.NewFrameReady += OnNewFrameReady;
@@ -251,10 +252,9 @@ public class ServoWebViewControl : Control
         {
             if (_webView == null || _surface == null) return;
             _webView.Paint();
-            var pixels = _hwRenderingContext?.ReadPixels() ?? _swRenderingContext?.ReadPixels();
             _hwRenderingContext?.Present();
             _swRenderingContext?.Present();
-            if (pixels != null) _surface.UpdatePixels(pixels);
+            _surface.MarkFrameReady();
         }, DispatcherPriority.Render);
     }
 

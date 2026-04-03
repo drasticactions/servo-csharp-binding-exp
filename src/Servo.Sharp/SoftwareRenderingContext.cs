@@ -76,6 +76,17 @@ public sealed class SoftwareRenderingContext : IDisposable
         return new PixelData(data, width, height);
     }
 
+    public unsafe bool ReadPixelsInto(nint destination, nuint destinationLength, out uint width, out uint height)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        uint w, h;
+        var result = ServoNative.rendering_context_read_pixels_into(
+            (void*)_handle, (byte*)destination, destinationLength, &w, &h);
+        width = w;
+        height = h;
+        return result != 0;
+    }
+
     public unsafe void Dispose()
     {
         if (_disposed) return;

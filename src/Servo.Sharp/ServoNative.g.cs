@@ -63,6 +63,9 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "rendering_context_read_pixels", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern byte* rendering_context_read_pixels(void* handle, uint* out_width, uint* out_height, nuint* out_len);
 
+        [DllImport(__DllName, EntryPoint = "rendering_context_read_pixels_into", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern byte rendering_context_read_pixels_into(void* handle, byte* dest, nuint dest_len, uint* out_width, uint* out_height);
+
         [DllImport(__DllName, EntryPoint = "webview_new", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void* webview_new(void* servo_handle, void* rendering_ctx_handle, WebViewCallbacks callbacks, ClipboardCallbacks clipboard, byte* initial_url);
 

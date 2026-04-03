@@ -318,6 +318,47 @@ pub extern "C" fn rendering_context_read_pixels(
     }
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn rendering_context_read_pixels_into(
+    handle: *mut c_void,
+    dest: *mut u8,
+    dest_len: usize,
+    out_width: *mut u32,
+    out_height: *mut u32,
+) -> u8 {
+    if handle.is_null() || dest.is_null() {
+        return 0;
+    }
+    let rc = unsafe { &*(handle as *mut Rc<dyn RenderingContext>) };
+
+    if let Err(e) = rc.make_current() {
+        set_last_error(format!("Failed to make context current for read_pixels_into: {e:?}"));
+        return 0;
+    }
+
+    let size = rc.size();
+    let rect = servo::DeviceIntRect::from_origin_and_size(
+        servo::DeviceIntPoint::new(0, 0),
+        servo::DeviceIntSize::new(size.width as i32, size.height as i32),
+    );
+
+    match rc.read_to_image(rect) {
+        Some(image) => {
+            let w = image.width();
+            let h = image.height();
+            let pixels = image.into_raw();
+            let copy_len = pixels.len().min(dest_len);
+            unsafe {
+                std::ptr::copy_nonoverlapping(pixels.as_ptr(), dest, copy_len);
+                if !out_width.is_null() { *out_width = w; }
+                if !out_height.is_null() { *out_height = h; }
+            }
+            1
+        },
+        None => 0,
+    }
+}
+
 struct FfiWebViewDelegate {
     callbacks: WebViewCallbacks,
 }
