@@ -2,151 +2,274 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Media.Imaging;
-using Avalonia.Platform.Storage;
-using Servo.Sharp;
+using Avalonia.Layout;
+using Avalonia.Media;
 using Servo.Sharp.Avalonia;
 
 namespace Servo.Sharp.Demo;
 
 public partial class MainWindow : Window
 {
-    private ServoRenderingBackend _currentBackend = ServoRenderingBackend.Hardware;
+    private readonly List<TabInfo> _tabs = new();
+    private int _activeTabIndex = -1;
 
-    public MainWindow()
+    public MainWindow() : this("https://servo.org") { }
+
+    public MainWindow(string? initialUrl)
     {
         InitializeComponent();
 
-        WebView.Source = new Uri("https://servo.org");
-        WireWebViewEvents(WebView);
-        UpdateBackendButton();
-
-        BackButton.Click += (_, _) => WebView.GoBack();
-        ForwardButton.Click += (_, _) => WebView.GoForward();
-        ReloadButton.Click += (_, _) => WebView.Reload();
-        GoButton.Click += (_, _) => NavigateToUrlBar();
+        BackButton.Click += (_, _) => ActiveWebView?.GoBack();
+        ForwardButton.Click += (_, _) => ActiveWebView?.GoForward();
+        ReloadButton.Click += (_, _) => ActiveWebView?.Reload();
         UrlBar.KeyDown += (_, e) => { if (e.Key == Key.Enter) NavigateToUrlBar(); };
-        ZoomInButton.Click += (_, _) => WebView.ZoomLevel += 0.1f;
-        ZoomOutButton.Click += (_, _) => WebView.ZoomLevel = Math.Max(0.1f, WebView.ZoomLevel - 0.1f);
-        ScreenshotButton.Click += OnScreenshotClicked;
-        JsRunButton.Click += OnJsRunClicked;
-        JsInput.KeyDown += (_, e) => { if (e.Key == Key.Enter) OnJsRunClicked(null, e); };
-        BackendButton.Click += OnBackendToggle;
+        NewTabButton.Click += (_, _) => AddTab("https://servo.org");
+        NewWindowButton.Click += (_, _) => OpenNewWindow();
+
+        AddTab(initialUrl ?? "https://servo.org");
     }
 
-    private void WireWebViewEvents(ServoWebViewControl wv)
+    private ServoWebViewControl? ActiveWebView => _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
+        ? _tabs[_activeTabIndex].WebView
+        : null;
+
+    public void AddTab(string url)
     {
-        wv.Navigated += (_, e) => UrlBar.Text = e.Url;
+        var webView = new ServoWebViewControl
+        {
+            Source = new Uri(url),
+            IsVisible = false,
+        };
+
+        var tab = new TabInfo
+        {
+            Title = "New Tab",
+            WebView = webView,
+        };
+
+        WireWebViewEvents(tab);
+        _tabs.Add(tab);
+        WebViewContainer.Children.Add(webView);
+        SwitchToTab(_tabs.Count - 1);
+    }
+
+    private void SwitchToTab(int index)
+    {
+        if (index < 0 || index >= _tabs.Count) return;
+
+        // Hide current
+        if (_activeTabIndex >= 0 && _activeTabIndex < _tabs.Count)
+            _tabs[_activeTabIndex].WebView.IsVisible = false;
+
+        _activeTabIndex = index;
+        var tab = _tabs[index];
+        tab.WebView.IsVisible = true;
+        tab.WebView.Focus();
+
+        UpdateUrlBar(tab);
+        UpdateNavigationButtons(tab);
+        UpdateWindowTitle(tab);
+        RebuildTabStrip();
+    }
+
+    private void CloseTab(int index)
+    {
+        if (index < 0 || index >= _tabs.Count) return;
+
+        if (_tabs.Count == 1)
+        {
+            Close();
+            return;
+        }
+
+        var tab = _tabs[index];
+        _tabs.RemoveAt(index);
+        WebViewContainer.Children.Remove(tab.WebView);
+
+        if (_activeTabIndex == index)
+        {
+            // Switch to nearest tab
+            var newIndex = Math.Min(index, _tabs.Count - 1);
+            _activeTabIndex = -1; // force re-switch
+            SwitchToTab(newIndex);
+        }
+        else if (_activeTabIndex > index)
+        {
+            _activeTabIndex--;
+            RebuildTabStrip();
+        }
+        else
+        {
+            RebuildTabStrip();
+        }
+    }
+
+    private void OpenNewWindow()
+    {
+        var window = new MainWindow("https://servo.org");
+        window.Show();
+    }
+
+    private void WireWebViewEvents(TabInfo tab)
+    {
+        var wv = tab.WebView;
+
+        wv.Navigated += (_, e) =>
+        {
+            tab.Url = e.Url;
+            if (IsActiveTab(tab))
+                UrlBar.Text = e.Url;
+        };
+
         wv.TitleChanged += (_, e) =>
-            Title = e.Title != null ? $"{e.Title} - Servo C# Demo" : "Servo C# Demo";
+        {
+            tab.Title = e.Title ?? "New Tab";
+            if (IsActiveTab(tab))
+                UpdateWindowTitle(tab);
+            RebuildTabStrip();
+        };
+
         wv.LoadStatusChanged += (_, e) =>
-            StatusText.Text = e.Status switch
+        {
+            if (IsActiveTab(tab))
             {
-                LoadStatus.Started => "Loading...",
-                LoadStatus.HeadParsed => "Parsing...",
-                LoadStatus.Complete => "Complete",
-                _ => "Unknown",
-            };
-        wv.ConsoleMessage += (_, e) => StatusText.Text = $"[{e.Level}] {e.Message}";
-        wv.Crashed += (_, e) => StatusText.Text = $"CRASHED: {e.Reason}";
+                StatusText.Text = e.Status switch
+                {
+                    LoadStatus.Started => "Loading...",
+                    LoadStatus.HeadParsed => "Parsing...",
+                    LoadStatus.Complete => "Complete",
+                    _ => "Unknown",
+                };
+            }
+        };
+
         wv.PropertyChanged += (_, e) =>
         {
+            if (!IsActiveTab(tab)) return;
             if (e.Property == ServoWebViewControl.CanGoBackProperty)
-                BackButton.IsEnabled = WebView.CanGoBack;
+                BackButton.IsEnabled = wv.CanGoBack;
             else if (e.Property == ServoWebViewControl.CanGoForwardProperty)
-                ForwardButton.IsEnabled = WebView.CanGoForward;
+                ForwardButton.IsEnabled = wv.CanGoForward;
         };
-    }
 
-    private void OnBackendToggle(object? sender, EventArgs e)
-    {
-        var currentUrl = WebView.WebView?.Url;
-        _currentBackend = _currentBackend == ServoRenderingBackend.Hardware
-            ? ServoRenderingBackend.Software
-            : ServoRenderingBackend.Hardware;
-
-        WebViewContainer.Children.Clear();
-
-        var newWebView = new ServoWebViewControl
+        wv.ConsoleMessage += (_, e) =>
         {
-            RenderingBackend = _currentBackend,
-            Source = currentUrl != null ? new Uri(currentUrl) : new Uri("https://servo.org"),
+            if (IsActiveTab(tab))
+                StatusText.Text = $"[{e.Level}] {e.Message}";
         };
-        WireWebViewEvents(newWebView);
-        WebView = newWebView;
-        WebViewContainer.Children.Add(newWebView);
 
-        UpdateBackendButton();
-        StatusText.Text = $"Switched to {_currentBackend} rendering";
+        wv.Crashed += (_, e) =>
+        {
+            if (IsActiveTab(tab))
+                StatusText.Text = $"CRASHED: {e.Reason}";
+        };
     }
 
-    private void UpdateBackendButton()
-    {
-        BackendButton.Content = _currentBackend == ServoRenderingBackend.Hardware ? "HW" : "SW";
-        ToolTip.SetTip(BackendButton,
-            _currentBackend == ServoRenderingBackend.Hardware
-                ? "Currently: Hardware (GPU). Click to switch to Software."
-                : "Currently: Software (CPU). Click to switch to Hardware.");
-    }
+    private bool IsActiveTab(TabInfo tab) =>
+        _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count && _tabs[_activeTabIndex] == tab;
 
     private void NavigateToUrlBar()
     {
         var url = UrlBar.Text;
         if (string.IsNullOrWhiteSpace(url)) return;
         if (!url.Contains("://")) url = "https://" + url;
-        WebView.Navigate(url);
-        StatusText.Text = $"Loading {url}...";
-        WebView.Focus();
+        ActiveWebView?.Navigate(url);
+        ActiveWebView?.Focus();
     }
 
-    private async void OnJsRunClicked(object? sender, EventArgs e)
+    private void UpdateUrlBar(TabInfo tab)
     {
-        if (string.IsNullOrWhiteSpace(JsInput.Text)) return;
-        try
-        {
-            var result = await WebView.EvaluateJavaScriptAsync(JsInput.Text);
-            StatusText.Text = $"JS result: {result}";
-        }
-        catch (Exception ex)
-        {
-            StatusText.Text = $"JS error: {ex.Message}";
-        }
+        UrlBar.Text = tab.Url ?? tab.WebView.Source?.AbsoluteUri ?? "";
     }
 
-    private async void OnScreenshotClicked(object? sender, EventArgs e)
+    private void UpdateNavigationButtons(TabInfo tab)
     {
-        var webView = WebView.WebView;
-        if (webView == null) return;
-        StatusText.Text = "Taking screenshot...";
-        try
-        {
-            var pixels = await webView.TakeScreenshotAsync();
-            if (pixels == null) { StatusText.Text = "Screenshot failed"; return; }
+        BackButton.IsEnabled = tab.WebView.CanGoBack;
+        ForwardButton.IsEnabled = tab.WebView.CanGoForward;
+    }
 
-            var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+    private void UpdateWindowTitle(TabInfo tab)
+    {
+        Title = !string.IsNullOrEmpty(tab.Title) && tab.Title != "New Tab"
+            ? $"{tab.Title}"
+            : "Servo C# Demo";
+    }
+
+    private void RebuildTabStrip()
+    {
+        TabStrip.Children.Clear();
+
+        for (int i = 0; i < _tabs.Count; i++)
+        {
+            var index = i;
+            var tab = _tabs[i];
+            var isActive = i == _activeTabIndex;
+
+            var titleText = new TextBlock
             {
-                Title = "Save Screenshot",
-                DefaultExtension = "png",
-                FileTypeChoices = [new FilePickerFileType("PNG") { Patterns = ["*.png"] }],
-                SuggestedFileName = "servo-screenshot.png",
-            });
-            if (file == null) { StatusText.Text = "Screenshot cancelled"; return; }
+                Text = TruncateTitle(tab.Title, 20),
+                VerticalAlignment = VerticalAlignment.Center,
+                MaxWidth = 150,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                FontSize = 12,
+            };
 
-            var bmp = new WriteableBitmap(
-                new PixelSize((int)pixels.Width, (int)pixels.Height),
-                new Vector(96, 96),
-                global::Avalonia.Platform.PixelFormat.Rgba8888,
-                global::Avalonia.Platform.AlphaFormat.Premul);
-            using (var fb = bmp.Lock())
-                System.Runtime.InteropServices.Marshal.Copy(pixels.Data, 0, fb.Address, pixels.Data.Length);
+            var closeBtn = new Button
+            {
+                Content = "✕",
+                Padding = new Thickness(2, 0),
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                FontSize = 10,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 0, 0),
+                Width = 18,
+                Height = 18,
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalContentAlignment = VerticalAlignment.Center,
+            };
+            closeBtn.Click += (_, _) => CloseTab(index);
 
-            await using var stream = await file.OpenWriteAsync();
-            bmp.Save(stream);
-            StatusText.Text = $"Screenshot saved to {file.Name}";
+            var tabContent = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+            };
+            tabContent.Children.Add(titleText);
+            tabContent.Children.Add(closeBtn);
+
+            var tabButton = new Button
+            {
+                Content = tabContent,
+                Padding = new Thickness(8, 4),
+                Background = isActive
+                    ? Brushes.White
+                    : new SolidColorBrush(Color.Parse("#E8E8E8")),
+                BorderThickness = new Thickness(1, 1, 1, isActive ? 0 : 1),
+                BorderBrush = new SolidColorBrush(Color.Parse("#CCCCCC")),
+                CornerRadius = new CornerRadius(4, 4, 0, 0),
+                Margin = new Thickness(1, 0),
+                MinWidth = 60,
+            };
+            tabButton.Click += (_, _) => SwitchToTab(index);
+
+            TabStrip.Children.Add(tabButton);
         }
-        catch (Exception ex) { StatusText.Text = $"Screenshot error: {ex.Message}"; }
+    }
+
+    private static string TruncateTitle(string? title, int maxLength)
+    {
+        if (string.IsNullOrEmpty(title)) return "New Tab";
+        return title.Length <= maxLength ? title : title[..(maxLength - 1)] + "…";
+    }
+
+    private sealed class TabInfo
+    {
+        public required ServoWebViewControl WebView { get; init; }
+        public string Title { get; set; } = "New Tab";
+        public string? Url { get; set; }
     }
 }
