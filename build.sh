@@ -116,3 +116,11 @@ if [ "$RID" = "win-x64" ]; then
         fi
     done
 fi
+
+RESOURCES_SRC="$SERVO_DIR/resources"
+RESOURCES_DST="$SCRIPT_DIR/artifacts/resources"
+if [ -d "$RESOURCES_SRC" ]; then
+    rm -rf "$RESOURCES_DST"
+    cp -r "$RESOURCES_SRC" "$RESOURCES_DST"
+    echo "  resources/ copied"
+fi
