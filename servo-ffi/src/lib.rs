@@ -11,8 +11,8 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 use servo::{
-    AllowOrDenyRequest, ClipboardDelegate, ConsoleLogLevel, Cursor, InputEvent,
-    InputEventId, InputEventResult, JSValue, LoadStatus, MediaSessionEvent,
+    AllowOrDenyRequest, ClipboardDelegate, ConsoleLogLevel, CreateNewWebViewRequest,
+    Cursor, InputEvent, InputEventId, InputEventResult, JSValue, LoadStatus, MediaSessionEvent,
     NavigationRequest, PermissionRequest, PrefValue, RenderingContext,
     Scroll, ScreenGeometry, Servo, ServoBuilder, ServoDelegate, ServoError,
     SoftwareRenderingContext, StringRequest, WebView, WebViewBuilder, WebViewDelegate,
@@ -608,6 +608,14 @@ impl WebViewDelegate for FfiWebViewDelegate {
         }
         // If no callback, PermissionRequest drops and defaults to deny.
     }
+
+    fn request_create_new(&self, _parent_webview: WebView, request: CreateNewWebViewRequest) {
+        if let Some(cb) = self.callbacks.on_request_create_new_webview {
+            let handle = Box::into_raw(Box::new(request)) as usize;
+            cb(self.ud(), handle);
+        }
+        // If no callback, CreateNewWebViewRequest drops and no new webview is created.
+    }
 }
 
 struct WebViewHandle {
@@ -646,6 +654,39 @@ pub extern "C" fn webview_new(
         Box::into_raw(Box::new(WebViewHandle { webview, _rendering_context: rc.clone() })) as *mut c_void
     }));
     result.unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn create_new_webview_build(
+    request_handle: usize,
+    rendering_ctx_handle: *mut c_void,
+    callbacks: WebViewCallbacks,
+    clipboard: ClipboardCallbacks,
+) -> *mut c_void {
+    if request_handle == 0 || rendering_ctx_handle.is_null() {
+        set_last_error("request_handle and rendering_ctx_handle must not be null/zero".into());
+        return std::ptr::null_mut();
+    }
+    let result = ffi_catch(std::panic::AssertUnwindSafe(|| {
+        let request = unsafe { *Box::from_raw(request_handle as *mut CreateNewWebViewRequest) };
+        let rc = unsafe { &*(rendering_ctx_handle as *mut Rc<dyn RenderingContext>) };
+        let delegate = FfiWebViewDelegate { callbacks };
+        let mut builder = request.builder(rc.clone())
+            .delegate(Rc::new(delegate));
+        if clipboard.get_text.is_some() || clipboard.set_text.is_some() || clipboard.clear.is_some() {
+            builder = builder.clipboard_delegate(Rc::new(FfiClipboardDelegate { callbacks: clipboard }));
+        }
+        let webview = builder.build();
+        Box::into_raw(Box::new(WebViewHandle { webview, _rendering_context: rc.clone() })) as *mut c_void
+    }));
+    result.unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn create_new_webview_dismiss(request_handle: usize) {
+    if request_handle != 0 {
+        unsafe { drop(Box::from_raw(request_handle as *mut CreateNewWebViewRequest)); }
+    }
 }
 
 #[unsafe(no_mangle)]

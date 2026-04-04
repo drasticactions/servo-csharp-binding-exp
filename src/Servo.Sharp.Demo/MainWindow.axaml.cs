@@ -173,6 +173,27 @@ public partial class MainWindow : Window
             if (IsActiveTab(tab))
                 StatusText.Text = $"CRASHED: {e.Reason}";
         };
+
+        wv.CreateNewWebViewRequested += (_, e) =>
+        {
+            var newWebView = new ServoWebViewControl
+            {
+                PendingCreateNewWebViewRequest = e.RequestHandle,
+                IsVisible = false,
+            };
+
+            var newTab = new TabInfo
+            {
+                Title = "New Tab",
+                WebView = newWebView,
+            };
+
+            WireWebViewEvents(newTab);
+            _tabs.Add(newTab);
+            WebViewContainer.Children.Add(newWebView);
+            SwitchToTab(_tabs.Count - 1);
+            e.MarkHandled();
+        };
     }
 
     private bool IsActiveTab(TabInfo tab) =>

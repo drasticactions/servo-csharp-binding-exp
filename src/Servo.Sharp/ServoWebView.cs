@@ -32,6 +32,7 @@ public sealed class ServoWebView : IDisposable
     public event EventHandler<PermissionRequestEventArgs>? PermissionRequested;
     public event EventHandler<UnloadRequestEventArgs>? UnloadRequested;
     public event EventHandler<MediaSessionEventArgs>? MediaSessionEvent;
+    public event EventHandler<CreateNewWebViewRequestEventArgs>? CreateNewWebViewRequested;
 
     public unsafe ServoWebView(ServoEngine engine, RenderingContext renderingContext, string? initialUrl = null)
         : this(engine, renderingContext.Handle, initialUrl) { }
@@ -39,35 +40,7 @@ public sealed class ServoWebView : IDisposable
     private unsafe ServoWebView(ServoEngine engine, nint renderingCtxHandle, string? initialUrl)
     {
         _selfHandle = GCHandle.Alloc(this);
-
-        var callbacks = new WebViewCallbacks
-        {
-            user_data = (void*)GCHandle.ToIntPtr(_selfHandle),
-            on_new_frame_ready = &OnNewFrameReadyImpl,
-            on_load_status_changed = &OnLoadStatusChangedImpl,
-            on_url_changed = &OnUrlChangedImpl,
-            on_title_changed = &OnTitleChangedImpl,
-            on_cursor_changed = &OnCursorChangedImpl,
-            on_focus_changed = &OnFocusChangedImpl,
-            on_animating_changed = &OnAnimatingChangedImpl,
-            on_favicon_changed = &OnFaviconChangedImpl,
-            on_input_event_handled = &OnInputEventHandledImpl,
-            on_history_changed = &OnHistoryChangedImpl,
-            on_closed = &OnClosedImpl,
-            on_fullscreen_changed = &OnFullscreenChangedImpl,
-            on_crashed = &OnCrashedImpl,
-            on_console_message = &OnConsoleMessageImpl,
-            on_show_alert = &OnShowAlertImpl,
-            on_show_confirm = &OnShowConfirmImpl,
-            on_show_prompt = &OnShowPromptImpl,
-            on_show_select_element = &OnShowSelectElementImpl,
-            on_show_context_menu = &OnShowContextMenuImpl,
-            on_request_navigation = &OnRequestNavigationImpl,
-            on_request_permission = &OnRequestPermissionImpl,
-            on_request_unload = &OnRequestUnloadImpl,
-            on_media_session_event = &OnMediaSessionEventImpl,
-        };
-
+        var callbacks = BuildCallbacks();
         var clipboard = new ClipboardCallbacks();
 
         if (initialUrl != null)
@@ -93,6 +66,58 @@ public sealed class ServoWebView : IDisposable
             _selfHandle.Free();
             throw new InvalidOperationException("Failed to create WebView");
         }
+    }
+
+    /// <summary>
+    /// Build a WebView from a CreateNewWebViewRequest handle (from a <see cref="CreateNewWebViewRequestEventArgs"/>).
+    /// </summary>
+    public unsafe ServoWebView(RenderingContext renderingContext, nuint requestHandle)
+    {
+        _selfHandle = GCHandle.Alloc(this);
+        var callbacks = BuildCallbacks();
+        var clipboard = new ClipboardCallbacks();
+
+        _handle = (nint)ServoNative.create_new_webview_build(
+            requestHandle, (void*)renderingContext.Handle,
+            callbacks, clipboard);
+
+        if (_handle == 0)
+        {
+            _selfHandle.Free();
+            throw new InvalidOperationException("Failed to create WebView from CreateNewWebViewRequest");
+        }
+    }
+
+    private unsafe WebViewCallbacks BuildCallbacks()
+    {
+        return new WebViewCallbacks
+        {
+            user_data = (void*)GCHandle.ToIntPtr(_selfHandle),
+            on_new_frame_ready = &OnNewFrameReadyImpl,
+            on_load_status_changed = &OnLoadStatusChangedImpl,
+            on_url_changed = &OnUrlChangedImpl,
+            on_title_changed = &OnTitleChangedImpl,
+            on_cursor_changed = &OnCursorChangedImpl,
+            on_focus_changed = &OnFocusChangedImpl,
+            on_animating_changed = &OnAnimatingChangedImpl,
+            on_favicon_changed = &OnFaviconChangedImpl,
+            on_input_event_handled = &OnInputEventHandledImpl,
+            on_history_changed = &OnHistoryChangedImpl,
+            on_closed = &OnClosedImpl,
+            on_fullscreen_changed = &OnFullscreenChangedImpl,
+            on_crashed = &OnCrashedImpl,
+            on_console_message = &OnConsoleMessageImpl,
+            on_show_alert = &OnShowAlertImpl,
+            on_show_confirm = &OnShowConfirmImpl,
+            on_show_prompt = &OnShowPromptImpl,
+            on_show_select_element = &OnShowSelectElementImpl,
+            on_show_context_menu = &OnShowContextMenuImpl,
+            on_request_navigation = &OnRequestNavigationImpl,
+            on_request_permission = &OnRequestPermissionImpl,
+            on_request_unload = &OnRequestUnloadImpl,
+            on_media_session_event = &OnMediaSessionEventImpl,
+            on_request_create_new_webview = &OnRequestCreateNewWebViewImpl,
+        };
     }
 
     public unsafe void Load(string url)
@@ -597,5 +622,17 @@ public sealed class ServoWebView : IDisposable
         if (!TryGet(ud, out var w)) return;
         var s = Marshal.PtrToStringUTF8((nint)json) ?? "{}";
         w.MediaSessionEvent?.Invoke(w, new MediaSessionEventArgs(eventType, s));
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnRequestCreateNewWebViewImpl(void* ud, nuint handle)
+    {
+        if (!TryGet(ud, out var w)) return;
+        var args = new CreateNewWebViewRequestEventArgs(handle);
+        var handler = w.CreateNewWebViewRequested;
+        if (handler != null)
+            handler.Invoke(w, args);
+        else
+            args.Dismiss(); // no handler, dismiss to clean up the native request
     }
 }

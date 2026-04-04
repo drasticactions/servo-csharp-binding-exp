@@ -84,6 +84,7 @@ public class ServoWebViewControl : Control
     public event EventHandler<PromptRequestEventArgs>? PromptRequested;
     public event EventHandler<SelectElementRequestEventArgs>? SelectElementRequested;
     public event EventHandler<ContextMenuRequestEventArgs>? ContextMenuRequested;
+    public event EventHandler<CreateNewWebViewRequestEventArgs>? CreateNewWebViewRequested;
 
     private string? _pageTitle;
     private bool _isLoading;
@@ -102,6 +103,13 @@ public class ServoWebViewControl : Control
     }
 
     public ServoRenderingBackend RenderingBackend { get; set; } = ServoRenderingBackend.Hardware;
+
+    /// <summary>
+    /// If set before the control is attached to the visual tree, this request handle
+    /// will be used to build the WebView (via create_new_webview_build) instead of
+    /// creating a fresh one. The handle is consumed during initialization.
+    /// </summary>
+    public nuint? PendingCreateNewWebViewRequest { get; set; }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -175,11 +183,21 @@ public class ServoWebViewControl : Control
         _lastScaling = scaling;
         var (pw, ph) = GetPixelSize(scaling);
 
-        var initialUrl = Source?.AbsoluteUri;
         _renderingContext = RenderingBackend == ServoRenderingBackend.Hardware
             ? new HardwareRenderingContext(pw, ph)
             : new SoftwareRenderingContext(pw, ph);
-        _webView = new ServoWebView(engine, _renderingContext, initialUrl);
+
+        if (PendingCreateNewWebViewRequest is { } requestHandle)
+        {
+            PendingCreateNewWebViewRequest = null;
+            _webView = new ServoWebView(_renderingContext, requestHandle);
+        }
+        else
+        {
+            var initialUrl = Source?.AbsoluteUri;
+            _webView = new ServoWebView(engine, _renderingContext, initialUrl);
+        }
+
         _surface!.SetRenderingContext(_renderingContext);
         _webView.SetHidpiScale((float)scaling);
 
@@ -256,6 +274,23 @@ public class ServoWebViewControl : Control
             });
         };
         _webView.UnloadRequested += (_, e) => e.Allow();
+        _webView.CreateNewWebViewRequested += (_, e) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                var handler = CreateNewWebViewRequested;
+                if (handler != null)
+                {
+                    handler.Invoke(this, e);
+                    if (!e.IsHandled)
+                        e.Dismiss();
+                }
+                else
+                {
+                    e.Dismiss();
+                }
+            });
+        };
 
         _webView.Show();
         _webView.Focus();

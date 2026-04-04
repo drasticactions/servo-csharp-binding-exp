@@ -69,6 +69,12 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "webview_new", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void* webview_new(void* servo_handle, void* rendering_ctx_handle, WebViewCallbacks callbacks, ClipboardCallbacks clipboard, byte* initial_url);
 
+        [DllImport(__DllName, EntryPoint = "create_new_webview_build", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void* create_new_webview_build(nuint request_handle, void* rendering_ctx_handle, WebViewCallbacks callbacks, ClipboardCallbacks clipboard);
+
+        [DllImport(__DllName, EntryPoint = "create_new_webview_dismiss", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void create_new_webview_dismiss(nuint request_handle);
+
         [DllImport(__DllName, EntryPoint = "webview_destroy", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void webview_destroy(void* handle);
 
@@ -257,6 +263,7 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, byte, byte*, void> on_media_session_event;
         public delegate* unmanaged[Cdecl]<void*, byte*, long, int, int, int, int, nuint, void> on_show_select_element;
         public delegate* unmanaged[Cdecl]<void*, byte*, int, int, nuint, void> on_show_context_menu;
+        public delegate* unmanaged[Cdecl]<void*, nuint, void> on_request_create_new_webview;
         public delegate* unmanaged[Cdecl]<void*, CScreenGeometry*, byte> get_screen_geometry;
     }
 
