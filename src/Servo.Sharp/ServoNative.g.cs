@@ -81,6 +81,15 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "authentication_request_dismiss", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void authentication_request_dismiss(nuint request_handle);
 
+        [DllImport(__DllName, EntryPoint = "web_resource_load_dismiss", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void web_resource_load_dismiss(nuint handle);
+
+        [DllImport(__DllName, EntryPoint = "web_resource_load_intercept", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void web_resource_load_intercept(nuint handle, ushort status_code, byte* body, nuint body_len);
+
+        [DllImport(__DllName, EntryPoint = "web_resource_load_cancel", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void web_resource_load_cancel(nuint handle);
+
         [DllImport(__DllName, EntryPoint = "webview_destroy", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void webview_destroy(void* handle);
 
@@ -240,6 +249,7 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, ushort, byte*, void> on_devtools_started;
         public delegate* unmanaged[Cdecl]<void*, byte, byte*, void> on_console_message;
         public delegate* unmanaged[Cdecl]<void*, byte> on_request_devtools_connection;
+        public delegate* unmanaged[Cdecl]<void*, byte*, byte*, byte, byte, nuint, void> on_load_web_resource;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -272,6 +282,7 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, nuint, void> on_request_create_new_webview;
         public delegate* unmanaged[Cdecl]<void*, byte*, byte, nuint, void> on_request_authentication;
         public delegate* unmanaged[Cdecl]<void*, void> on_hide_embedder_control;
+        public delegate* unmanaged[Cdecl]<void*, byte*, byte*, byte, byte, nuint, void> on_load_web_resource;
         public delegate* unmanaged[Cdecl]<void*, CScreenGeometry*, byte> get_screen_geometry;
     }
 

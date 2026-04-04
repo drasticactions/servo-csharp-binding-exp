@@ -38,6 +38,8 @@ public sealed class ServoEngine : IDisposable
 
     public event EventHandler<ConsoleMessageEventArgs>? ConsoleMessage;
 
+    public event EventHandler<WebResourceLoadEventArgs>? WebResourceLoadRequested;
+
     public unsafe ServoEngine(string? resourcePath = null)
     {
         _wakerHandle = GCHandle.Alloc(this);
@@ -73,6 +75,7 @@ public sealed class ServoEngine : IDisposable
             on_error = &OnErrorImpl,
             on_devtools_started = &OnDevtoolsStartedImpl,
             on_console_message = &OnConsoleMessageImpl,
+            on_load_web_resource = &OnLoadWebResourceImpl,
         };
         ServoNative.servo_set_delegate((void*)_handle, servoCallbacks);
     }
@@ -160,5 +163,20 @@ public sealed class ServoEngine : IDisposable
         var h = GCHandle.FromIntPtr((nint)ud);
         if (h.Target is ServoEngine e)
             e.ConsoleMessage?.Invoke(e, new ConsoleMessageEventArgs((ConsoleLogLevel)level, Marshal.PtrToStringUTF8((nint)msg) ?? ""));
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnLoadWebResourceImpl(void* ud, byte* url, byte* method, byte isMainFrame, byte isRedirect, nuint handle)
+    {
+        var h = GCHandle.FromIntPtr((nint)ud);
+        if (h.Target is not ServoEngine e) return;
+        var urlStr = Marshal.PtrToStringUTF8((nint)url) ?? "";
+        var methodStr = Marshal.PtrToStringUTF8((nint)method) ?? "";
+        var args = new WebResourceLoadEventArgs(urlStr, methodStr, isMainFrame != 0, isRedirect != 0, handle);
+        var handler = e.WebResourceLoadRequested;
+        if (handler != null)
+            handler.Invoke(e, args);
+        else
+            args.Allow();
     }
 }

@@ -87,6 +87,7 @@ public class ServoWebViewControl : Control
     public event EventHandler<CreateNewWebViewRequestEventArgs>? CreateNewWebViewRequested;
     public event EventHandler<AuthenticationRequestEventArgs>? AuthenticationRequested;
     public event EventHandler? HideEmbedderControlRequested;
+    public event EventHandler<WebResourceLoadEventArgs>? WebResourceLoadRequested;
 
     private string? _pageTitle;
     private bool _isLoading;
@@ -328,6 +329,13 @@ public class ServoWebViewControl : Control
                 DismissActiveEmbedderControls();
                 HideEmbedderControlRequested?.Invoke(this, e);
             });
+        };
+        _webView.WebResourceLoadRequested += (_, e) =>
+        {
+            if (WebResourceLoadRequested != null)
+                WebResourceLoadRequested.Invoke(this, e);
+            else
+                e.Allow();
         };
 
         _webView.Show();

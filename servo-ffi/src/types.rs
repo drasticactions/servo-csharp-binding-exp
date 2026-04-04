@@ -20,6 +20,8 @@ pub struct ServoCallbacks {
     pub on_console_message: Option<extern "C" fn(*mut c_void, u8, *const c_char)>,
 
     pub on_request_devtools_connection: Option<extern "C" fn(*mut c_void) -> u8>,
+
+    pub on_load_web_resource: Option<extern "C" fn(*mut c_void, *const c_char, *const c_char, u8, u8, usize)>,
 }
 
 unsafe impl Send for ServoCallbacks {}
@@ -70,6 +72,10 @@ pub struct WebViewCallbacks {
     pub on_request_authentication: Option<extern "C" fn(*mut c_void, *const c_char, u8, usize)>,
 
     pub on_hide_embedder_control: Option<extern "C" fn(*mut c_void)>,
+
+    /// Callback for web resource loads. Parameters: user_data, url, method, is_main_frame, is_redirect, handle.
+    /// If no callback, or if the handle is dismissed, the load proceeds normally.
+    pub on_load_web_resource: Option<extern "C" fn(*mut c_void, *const c_char, *const c_char, u8, u8, usize)>,
 
     pub get_screen_geometry: Option<extern "C" fn(*mut c_void, *mut CScreenGeometry) -> u8>,
 }

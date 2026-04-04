@@ -35,6 +35,7 @@ public sealed class ServoWebView : IDisposable
     public event EventHandler<CreateNewWebViewRequestEventArgs>? CreateNewWebViewRequested;
     public event EventHandler<AuthenticationRequestEventArgs>? AuthenticationRequested;
     public event EventHandler? HideEmbedderControlRequested;
+    public event EventHandler<WebResourceLoadEventArgs>? WebResourceLoadRequested;
 
     public unsafe ServoWebView(ServoEngine engine, RenderingContext renderingContext, string? initialUrl = null)
         : this(engine, renderingContext.Handle, initialUrl) { }
@@ -121,6 +122,7 @@ public sealed class ServoWebView : IDisposable
             on_request_create_new_webview = &OnRequestCreateNewWebViewImpl,
             on_request_authentication = &OnRequestAuthenticationImpl,
             on_hide_embedder_control = &OnHideEmbedderControlImpl,
+            on_load_web_resource = &OnLoadWebResourceImpl,
         };
     }
 
@@ -658,5 +660,19 @@ public sealed class ServoWebView : IDisposable
     {
         if (TryGet(ud, out var w))
             w.HideEmbedderControlRequested?.Invoke(w, EventArgs.Empty);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnLoadWebResourceImpl(void* ud, byte* url, byte* method, byte isMainFrame, byte isRedirect, nuint handle)
+    {
+        if (!TryGet(ud, out var w)) return;
+        var urlStr = Marshal.PtrToStringUTF8((nint)url) ?? "";
+        var methodStr = Marshal.PtrToStringUTF8((nint)method) ?? "";
+        var args = new WebResourceLoadEventArgs(urlStr, methodStr, isMainFrame != 0, isRedirect != 0, handle);
+        var handler = w.WebResourceLoadRequested;
+        if (handler != null)
+            handler.Invoke(w, args);
+        else
+            args.Allow(); // no handler, let load proceed normally
     }
 }

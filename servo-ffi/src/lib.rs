@@ -21,6 +21,7 @@ use servo::{
     SelectElement, ContextMenu, ContextMenuAction,
 };
 use servo::EmbedderControlId;
+use servo::{WebResourceLoad, WebResourceResponse};
 use servo::SelectElementOptionOrOptgroup;
 use servo::ContextMenuItem;
 use servo::input_events::{
@@ -172,6 +173,13 @@ impl ServoDelegate for FfiServoDelegate {
             if result == 0 { request.allow(); } else { request.deny(); }
         }
         // If no callback, request drops → default deny.
+    }
+
+    fn load_web_resource(&self, load: WebResourceLoad) {
+        if let Some(cb) = self.callbacks.on_load_web_resource {
+            fire_web_resource_callback(cb, self.ud(), load);
+        }
+        // If no callback, WebResourceLoad drops → DoNotIntercept.
     }
 }
 
@@ -639,6 +647,13 @@ impl WebViewDelegate for FfiWebViewDelegate {
             cb(self.ud());
         }
     }
+
+    fn load_web_resource(&self, _webview: WebView, load: WebResourceLoad) {
+        if let Some(cb) = self.callbacks.on_load_web_resource {
+            fire_web_resource_callback(cb, self.ud(), load);
+        }
+        // If no callback, WebResourceLoad drops → DoNotIntercept.
+    }
 }
 
 struct WebViewHandle {
@@ -732,6 +747,64 @@ pub extern "C" fn authentication_request_dismiss(request_handle: usize) {
     if request_handle != 0 {
         unsafe { drop(Box::from_raw(request_handle as *mut AuthenticationRequest)); }
     }
+}
+
+fn fire_web_resource_callback(
+    cb: extern "C" fn(*mut c_void, *const c_char, *const c_char, u8, u8, usize),
+    ud: *mut c_void,
+    load: WebResourceLoad,
+) {
+    let url_str = load.request.url.as_str().to_string();
+    let method_str = load.request.method.as_str().to_string();
+    let is_main = load.request.is_for_main_frame as u8;
+    let is_redir = load.request.is_redirect as u8;
+    let handle = Box::into_raw(Box::new(load)) as usize;
+    let url_ok = CString::new(url_str);
+    let method_ok = CString::new(method_str);
+    if let (Ok(u), Ok(m)) = (url_ok, method_ok) {
+        cb(ud, u.as_ptr(), m.as_ptr(), is_main, is_redir, handle);
+    } else {
+        // Can't form strings, drop the load (DoNotIntercept).
+        let _ = unsafe { Box::from_raw(handle as *mut WebResourceLoad) };
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn web_resource_load_dismiss(handle: usize) {
+    if handle != 0 {
+        unsafe { drop(Box::from_raw(handle as *mut WebResourceLoad)); }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn web_resource_load_intercept(
+    handle: usize,
+    status_code: u16,
+    body: *const u8,
+    body_len: usize,
+) {
+    if handle == 0 { return; }
+    let load = unsafe { *Box::from_raw(handle as *mut WebResourceLoad) };
+    let url = load.request.url.clone();
+    let response = WebResourceResponse::new(url)
+        .status_code(http::StatusCode::from_u16(status_code).unwrap_or(http::StatusCode::OK));
+    let mut intercepted = load.intercept(response);
+    if !body.is_null() && body_len > 0 {
+        let bytes = unsafe { std::slice::from_raw_parts(body, body_len) }.to_vec();
+        intercepted.send_body_data(bytes);
+    }
+    intercepted.finish();
+}
+
+/// Cancel a WebResourceLoad (triggers a network error).
+/// The handle is consumed.
+#[unsafe(no_mangle)]
+pub extern "C" fn web_resource_load_cancel(handle: usize) {
+    if handle == 0 { return; }
+    let load = unsafe { *Box::from_raw(handle as *mut WebResourceLoad) };
+    let url = load.request.url.clone();
+    let response = WebResourceResponse::new(url);
+    load.intercept(response).cancel();
 }
 
 #[unsafe(no_mangle)]
