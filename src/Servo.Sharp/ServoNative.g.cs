@@ -198,6 +198,12 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "select_element_respond", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void select_element_respond(nuint request_handle, long selected_id);
 
+        [DllImport(__DllName, EntryPoint = "context_menu_select", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void context_menu_select(nuint request_handle, byte action);
+
+        [DllImport(__DllName, EntryPoint = "context_menu_dismiss", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void context_menu_dismiss(nuint request_handle);
+
         [DllImport(__DllName, EntryPoint = "webview_take_screenshot", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void webview_take_screenshot(void* handle, delegate* unmanaged[Cdecl]<void*, byte*, uint, uint, nuint, void> callback, void* callback_data);
 
@@ -250,6 +256,7 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, nuint, void> on_request_unload;
         public delegate* unmanaged[Cdecl]<void*, byte, byte*, void> on_media_session_event;
         public delegate* unmanaged[Cdecl]<void*, byte*, long, int, int, int, int, nuint, void> on_show_select_element;
+        public delegate* unmanaged[Cdecl]<void*, byte*, int, int, nuint, void> on_show_context_menu;
         public delegate* unmanaged[Cdecl]<void*, CScreenGeometry*, byte> get_screen_geometry;
     }
 

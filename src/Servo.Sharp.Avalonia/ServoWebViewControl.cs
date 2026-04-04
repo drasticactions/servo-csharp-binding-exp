@@ -83,6 +83,7 @@ public class ServoWebViewControl : Control
     public event EventHandler<ConfirmRequestEventArgs>? ConfirmRequested;
     public event EventHandler<PromptRequestEventArgs>? PromptRequested;
     public event EventHandler<SelectElementRequestEventArgs>? SelectElementRequested;
+    public event EventHandler<ContextMenuRequestEventArgs>? ContextMenuRequested;
 
     private string? _pageTitle;
     private bool _isLoading;
@@ -239,6 +240,19 @@ public class ServoWebViewControl : Control
 
                 var overlay = new SelectElementOverlay(_contentHost, e);
                 _contentHost.Children.Add(overlay);
+            });
+        };
+        _webView.ContextMenuRequested += (_, e) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (ContextMenuRequested != null)
+                {
+                    ContextMenuRequested.Invoke(this, e);
+                    return;
+                }
+
+                ShowDefaultContextMenu(e);
             });
         };
         _webView.UnloadRequested += (_, e) => e.Allow();
@@ -403,5 +417,28 @@ public class ServoWebViewControl : Control
     {
         base.OnLostFocus(e);
         _webView?.Blur();
+    }
+
+    private void ShowDefaultContextMenu(ContextMenuRequestEventArgs e)
+    {
+        var menu = new ContextMenu();
+
+        foreach (var item in e.Items)
+        {
+            var menuItem = new MenuItem
+            {
+                Header = item.Label,
+                IsEnabled = item.Enabled,
+            };
+            var action = item.Action;
+            menuItem.Click += (_, _) => e.Select(action);
+            menu.Items.Add(menuItem);
+        }
+
+        menu.Closed += (_, _) => e.Dismiss();
+
+        var scaling = GetScaling();
+        menu.PlacementTarget = this;
+        menu.Open(this);
     }
 }

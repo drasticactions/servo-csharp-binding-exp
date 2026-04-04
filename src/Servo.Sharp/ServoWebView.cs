@@ -27,6 +27,7 @@ public sealed class ServoWebView : IDisposable
     public event EventHandler<ConfirmRequestEventArgs>? ConfirmRequested;
     public event EventHandler<PromptRequestEventArgs>? PromptRequested;
     public event EventHandler<SelectElementRequestEventArgs>? SelectElementRequested;
+    public event EventHandler<ContextMenuRequestEventArgs>? ContextMenuRequested;
     public event EventHandler<NavigationRequestEventArgs>? NavigationRequested;
     public event EventHandler<PermissionRequestEventArgs>? PermissionRequested;
     public event EventHandler<UnloadRequestEventArgs>? UnloadRequested;
@@ -60,6 +61,7 @@ public sealed class ServoWebView : IDisposable
             on_show_confirm = &OnShowConfirmImpl,
             on_show_prompt = &OnShowPromptImpl,
             on_show_select_element = &OnShowSelectElementImpl,
+            on_show_context_menu = &OnShowContextMenuImpl,
             on_request_navigation = &OnRequestNavigationImpl,
             on_request_permission = &OnRequestPermissionImpl,
             on_request_unload = &OnRequestUnloadImpl,
@@ -545,6 +547,20 @@ public sealed class ServoWebView : IDisposable
             handler.Invoke(w, args);
         else
             args.Dismiss(); // no handler subscribed, dismiss immediately
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnShowContextMenuImpl(void* ud, byte* itemsJson, int posX, int posY, nuint handle)
+    {
+        if (!TryGet(ud, out var w)) return;
+        var json = Marshal.PtrToStringUTF8((nint)itemsJson) ?? "[]";
+        var items = ContextMenuRequestEventArgs.ParseItemsJson(json);
+        var args = new ContextMenuRequestEventArgs(items, posX, posY, handle);
+        var handler = w.ContextMenuRequested;
+        if (handler != null)
+            handler.Invoke(w, args);
+        else
+            args.Dismiss();
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]

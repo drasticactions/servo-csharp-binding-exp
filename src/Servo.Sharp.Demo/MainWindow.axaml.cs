@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Servo.Sharp.Avalonia;
@@ -16,6 +17,7 @@ public partial class MainWindow : Window
 {
     private readonly List<TabInfo> _tabs = new();
     private int _activeTabIndex = -1;
+    private bool _isDraggingTab;
 
     public MainWindow() : this("https://servo.org") { }
 
@@ -29,6 +31,11 @@ public partial class MainWindow : Window
         UrlBar.KeyDown += (_, e) => { if (e.Key == Key.Enter) NavigateToUrlBar(); };
         NewTabButton.Click += (_, _) => AddTab("https://servo.org");
         NewWindowButton.Click += (_, _) => OpenNewWindow();
+
+        TabStrip.AddHandler(DragTabItem.TabClickedEvent, OnTabClicked);
+        TabStrip.AddHandler(DragTabItem.DragStartedEvent, (_, _) => _isDraggingTab = true, handledEventsToo: true);
+        TabStrip.AddHandler(DragTabItem.DragCompletedEvent, (_, _) => _isDraggingTab = false, handledEventsToo: true);
+        TabStrip.TabReordered += OnTabReordered;
 
         AddTab(initialUrl ?? "https://servo.org");
     }
@@ -92,9 +99,8 @@ public partial class MainWindow : Window
 
         if (_activeTabIndex == index)
         {
-            // Switch to nearest tab
             var newIndex = Math.Min(index, _tabs.Count - 1);
-            _activeTabIndex = -1; // force re-switch
+            _activeTabIndex = -1;
             SwitchToTab(newIndex);
         }
         else if (_activeTabIndex > index)
@@ -199,13 +205,37 @@ public partial class MainWindow : Window
             : "Servo C# Demo";
     }
 
+    private void OnTabClicked(object? sender, RoutedEventArgs e)
+    {
+        _isDraggingTab = false;
+        if (e.Source is DragTabItem item)
+            SwitchToTab(item.LogicalIndex);
+    }
+
+    private void OnTabReordered(int oldIndex, int newIndex)
+    {
+        var tab = _tabs[oldIndex];
+        _tabs.RemoveAt(oldIndex);
+        _tabs.Insert(newIndex, tab);
+
+        if (_activeTabIndex == oldIndex)
+            _activeTabIndex = newIndex;
+        else if (oldIndex < _activeTabIndex && newIndex >= _activeTabIndex)
+            _activeTabIndex--;
+        else if (oldIndex > _activeTabIndex && newIndex <= _activeTabIndex)
+            _activeTabIndex++;
+
+        RebuildTabStrip();
+    }
+
     private void RebuildTabStrip()
     {
+        if (_isDraggingTab) return;
+
         TabStrip.Children.Clear();
 
         for (int i = 0; i < _tabs.Count; i++)
         {
-            var index = i;
             var tab = _tabs[i];
             var isActive = i == _activeTabIndex;
 
@@ -220,7 +250,7 @@ public partial class MainWindow : Window
 
             var closeBtn = new Button
             {
-                Content = "✕",
+                Content = "\u2715",
                 Padding = new Thickness(2, 0),
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
@@ -232,7 +262,9 @@ public partial class MainWindow : Window
                 HorizontalContentAlignment = HorizontalAlignment.Center,
                 VerticalContentAlignment = VerticalAlignment.Center,
             };
-            closeBtn.Click += (_, _) => CloseTab(index);
+
+            var closedIndex = i;
+            closeBtn.Click += (_, _) => CloseTab(closedIndex);
 
             var tabContent = new StackPanel
             {
@@ -241,7 +273,7 @@ public partial class MainWindow : Window
             tabContent.Children.Add(titleText);
             tabContent.Children.Add(closeBtn);
 
-            var tabButton = new Button
+            var tabItem = new DragTabItem
             {
                 Content = tabContent,
                 Padding = new Thickness(8, 4),
@@ -253,17 +285,17 @@ public partial class MainWindow : Window
                 CornerRadius = new CornerRadius(4, 4, 0, 0),
                 Margin = new Thickness(1, 0),
                 MinWidth = 60,
+                LogicalIndex = i,
             };
-            tabButton.Click += (_, _) => SwitchToTab(index);
 
-            TabStrip.Children.Add(tabButton);
+            TabStrip.Children.Add(tabItem);
         }
     }
 
     private static string TruncateTitle(string? title, int maxLength)
     {
         if (string.IsNullOrEmpty(title)) return "New Tab";
-        return title.Length <= maxLength ? title : title[..(maxLength - 1)] + "…";
+        return title.Length <= maxLength ? title : title[..(maxLength - 1)] + "\u2026";
     }
 
     private sealed class TabInfo

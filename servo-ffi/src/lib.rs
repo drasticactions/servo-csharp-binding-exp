@@ -17,9 +17,10 @@ use servo::{
     Scroll, ScreenGeometry, Servo, ServoBuilder, ServoDelegate, ServoError,
     SoftwareRenderingContext, StringRequest, WebView, WebViewBuilder, WebViewDelegate,
     DevicePoint, DeviceIntSize, DeviceIntRect, DeviceIntPoint, DeviceVector2D, WebViewPoint,
-    EmbedderControl, SimpleDialog, SelectElement,
+    EmbedderControl, SimpleDialog, SelectElement, ContextMenu, ContextMenuAction,
 };
 use servo::SelectElementOptionOrOptgroup;
+use servo::ContextMenuItem;
 use servo::input_events::{
     EditingActionEvent, KeyboardEvent, MouseButton, MouseButtonAction, MouseButtonEvent,
     MouseLeftViewportEvent, MouseMoveEvent, TouchEvent, TouchEventType, TouchId, WheelDelta,
@@ -565,6 +566,18 @@ impl WebViewDelegate for FfiWebViewDelegate {
                            handle);
                     } else {
                         let _ = unsafe { Box::from_raw(handle as *mut SelectElement) };
+                    }
+                }
+            },
+            EmbedderControl::ContextMenu(context_menu) => {
+                if let Some(cb) = self.callbacks.on_show_context_menu {
+                    let json = context_menu_items_to_json(context_menu.items());
+                    let pos = context_menu.position();
+                    let handle = Box::into_raw(Box::new(context_menu)) as usize;
+                    if let Ok(c) = CString::new(json) {
+                        cb(self.ud(), c.as_ptr(), pos.min.x, pos.min.y, handle);
+                    } else {
+                        let _ = unsafe { Box::from_raw(handle as *mut ContextMenu) };
                     }
                 }
             },
@@ -1120,6 +1133,66 @@ fn select_options_to_json(options: &[SelectElementOptionOrOptgroup]) -> String {
         }
     }).collect();
     format!("[{}]", items.join(","))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn context_menu_select(request_handle: usize, action: u8) {
+    if request_handle == 0 { return; }
+    let context_menu = unsafe { *Box::from_raw(request_handle as *mut ContextMenu) };
+    let action = match action {
+        0 => ContextMenuAction::GoBack,
+        1 => ContextMenuAction::GoForward,
+        2 => ContextMenuAction::Reload,
+        3 => ContextMenuAction::CopyLink,
+        4 => ContextMenuAction::OpenLinkInNewWebView,
+        5 => ContextMenuAction::CopyImageLink,
+        6 => ContextMenuAction::OpenImageInNewView,
+        7 => ContextMenuAction::Cut,
+        8 => ContextMenuAction::Copy,
+        9 => ContextMenuAction::Paste,
+        10 => ContextMenuAction::SelectAll,
+        _ => return, // invalid action, drop the menu (dismiss via Drop)
+    };
+    context_menu.select(action);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn context_menu_dismiss(request_handle: usize) {
+    if request_handle == 0 { return; }
+    let context_menu = unsafe { *Box::from_raw(request_handle as *mut ContextMenu) };
+    context_menu.dismiss();
+}
+
+fn context_menu_items_to_json(items: &[ContextMenuItem]) -> String {
+    let entries: Vec<String> = items.iter().map(|item| {
+        match item {
+            ContextMenuItem::Item { label, action, enabled } => {
+                let action_id: u8 = match action {
+                    ContextMenuAction::GoBack => 0,
+                    ContextMenuAction::GoForward => 1,
+                    ContextMenuAction::Reload => 2,
+                    ContextMenuAction::CopyLink => 3,
+                    ContextMenuAction::OpenLinkInNewWebView => 4,
+                    ContextMenuAction::CopyImageLink => 5,
+                    ContextMenuAction::OpenImageInNewView => 6,
+                    ContextMenuAction::Cut => 7,
+                    ContextMenuAction::Copy => 8,
+                    ContextMenuAction::Paste => 9,
+                    ContextMenuAction::SelectAll => 10,
+                };
+                format!(
+                    r#"{{"type":"item","label":{},"action":{},"enabled":{}}}"#,
+                    serde_json::to_string(label).unwrap_or_else(|_| "\"\"".to_string()),
+                    action_id,
+                    enabled
+                )
+            },
+            ContextMenuItem::Separator => {
+                r#"{"type":"separator"}"#.to_string()
+            },
+        }
+    }).collect();
+    format!("[{}]", entries.join(","))
 }
 
 struct FfiClipboardDelegate {

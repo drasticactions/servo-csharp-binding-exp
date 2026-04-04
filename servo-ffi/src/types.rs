@@ -63,6 +63,8 @@ pub struct WebViewCallbacks {
 
     pub on_show_select_element: Option<extern "C" fn(*mut c_void, *const c_char, i64, i32, i32, i32, i32, usize)>,
 
+    pub on_show_context_menu: Option<extern "C" fn(*mut c_void, *const c_char, i32, i32, usize)>,
+
     pub get_screen_geometry: Option<extern "C" fn(*mut c_void, *mut CScreenGeometry) -> u8>,
 }
 
