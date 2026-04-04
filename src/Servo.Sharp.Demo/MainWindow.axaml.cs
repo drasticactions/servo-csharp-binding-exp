@@ -203,7 +203,7 @@ public partial class MainWindow : Window
     {
         var url = UrlBar.Text;
         if (string.IsNullOrWhiteSpace(url)) return;
-        if (!url.Contains("://")) url = "https://" + url;
+        if (!url.Contains("://") && !url.StartsWith("data:")) url = "https://" + url;
         ActiveWebView?.Navigate(url);
         ActiveWebView?.Focus();
     }

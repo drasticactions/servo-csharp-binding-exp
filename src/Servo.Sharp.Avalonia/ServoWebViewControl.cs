@@ -85,6 +85,8 @@ public class ServoWebViewControl : Control
     public event EventHandler<SelectElementRequestEventArgs>? SelectElementRequested;
     public event EventHandler<ContextMenuRequestEventArgs>? ContextMenuRequested;
     public event EventHandler<CreateNewWebViewRequestEventArgs>? CreateNewWebViewRequested;
+    public event EventHandler<AuthenticationRequestEventArgs>? AuthenticationRequested;
+    public event EventHandler? HideEmbedderControlRequested;
 
     private string? _pageTitle;
     private bool _isLoading;
@@ -96,6 +98,14 @@ public class ServoWebViewControl : Control
     private ServoBitmapSurface? _surface;
     private Panel? _contentHost;
     private double _lastScaling = 1.0;
+    private SelectElementOverlay? _activeSelectOverlay;
+    private AuthenticationOverlay? _activeAuthOverlay;
+    private ContextMenu? _activeContextMenu;
+
+    private bool HasModalOverlay =>
+        _activeSelectOverlay != null ||
+        _activeAuthOverlay != null ||
+        _activeContextMenu != null;
 
     public ServoWebViewControl()
     {
@@ -257,6 +267,7 @@ public class ServoWebViewControl : Control
                 }
 
                 var overlay = new SelectElementOverlay(_contentHost, e);
+                _activeSelectOverlay = overlay;
                 _contentHost.Children.Add(overlay);
             });
         };
@@ -289,6 +300,31 @@ public class ServoWebViewControl : Control
                 {
                     e.Dismiss();
                 }
+            });
+        };
+        _webView.AuthenticationRequested += (_, e) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_contentHost == null) { e.Dismiss(); return; }
+
+                if (AuthenticationRequested != null)
+                {
+                    AuthenticationRequested.Invoke(this, e);
+                    return;
+                }
+
+                var overlay = new AuthenticationOverlay(_contentHost, e);
+                _activeAuthOverlay = overlay;
+                _contentHost.Children.Add(overlay);
+            });
+        };
+        _webView.HideEmbedderControlRequested += (_, e) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                DismissActiveEmbedderControls();
+                HideEmbedderControlRequested?.Invoke(this, e);
             });
         };
 
@@ -348,7 +384,7 @@ public class ServoWebViewControl : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-        if (_webView == null) return;
+        if (_webView == null || HasModalOverlay) return;
         Focus();
         var pos = e.GetPosition(this);
         var s = GetScaling();
@@ -364,7 +400,7 @@ public class ServoWebViewControl : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        if (_webView == null) return;
+        if (_webView == null || HasModalOverlay) return;
         var pos = e.GetPosition(this);
         var s = GetScaling();
         var button = AvaloniaKeyMapping.ToServoButton(e.InitialPressMouseButton);
@@ -374,7 +410,7 @@ public class ServoWebViewControl : Control
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-        if (_webView == null) return;
+        if (_webView == null || HasModalOverlay) return;
         var pos = e.GetPosition(this);
         var s = GetScaling();
         _webView.SendMouseMove((float)(pos.X * s), (float)(pos.Y * s));
@@ -389,7 +425,7 @@ public class ServoWebViewControl : Control
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
-        if (_webView == null) return;
+        if (_webView == null || HasModalOverlay) return;
         var pos = e.GetPosition(this);
         var s = GetScaling();
         _webView.SendWheel(e.Delta.X * 40.0, e.Delta.Y * 40.0, WheelMode.DeltaPixel,
@@ -399,7 +435,7 @@ public class ServoWebViewControl : Control
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (_webView == null) return;
+        if (_webView == null || HasModalOverlay) return;
 
         if (e.KeyModifiers.HasFlag(global::Avalonia.Input.KeyModifiers.Control))
         {
@@ -426,6 +462,7 @@ public class ServoWebViewControl : Control
     protected override void OnKeyUp(KeyEventArgs e)
     {
         base.OnKeyUp(e);
+        if (HasModalOverlay) return;
         _webView?.SendKeyEvent(down: false, keyChar: 0,
             keyCode: AvaloniaKeyMapping.ToServoCode(e.Key),
             modifiers: AvaloniaKeyMapping.ToServoModifiers(e.KeyModifiers));
@@ -434,7 +471,7 @@ public class ServoWebViewControl : Control
     protected override void OnTextInput(TextInputEventArgs e)
     {
         base.OnTextInput(e);
-        if (_webView == null || string.IsNullOrEmpty(e.Text)) return;
+        if (_webView == null || HasModalOverlay || string.IsNullOrEmpty(e.Text)) return;
         foreach (var ch in e.Text)
         {
             _webView.SendKeyEvent(down: true, keyChar: ch, keyCode: null);
@@ -454,6 +491,27 @@ public class ServoWebViewControl : Control
         _webView?.Blur();
     }
 
+    private void DismissActiveEmbedderControls()
+    {
+        if (_activeSelectOverlay != null)
+        {
+            _activeSelectOverlay.DismissIfOpen();
+            _activeSelectOverlay = null;
+        }
+
+        if (_activeAuthOverlay != null)
+        {
+            _activeAuthOverlay.DismissIfOpen();
+            _activeAuthOverlay = null;
+        }
+
+        if (_activeContextMenu != null)
+        {
+            _activeContextMenu.Close();
+            _activeContextMenu = null;
+        }
+    }
+
     private void ShowDefaultContextMenu(ContextMenuRequestEventArgs e)
     {
         var menu = new ContextMenu();
@@ -470,9 +528,13 @@ public class ServoWebViewControl : Control
             menu.Items.Add(menuItem);
         }
 
-        menu.Closed += (_, _) => e.Dismiss();
+        menu.Closed += (_, _) =>
+        {
+            _activeContextMenu = null;
+            e.Dismiss();
+        };
 
-        var scaling = GetScaling();
+        _activeContextMenu = menu;
         menu.PlacementTarget = this;
         menu.Open(this);
     }

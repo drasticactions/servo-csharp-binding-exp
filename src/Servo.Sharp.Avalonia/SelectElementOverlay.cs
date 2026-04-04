@@ -180,6 +180,11 @@ public class SelectElementOverlay : Canvas
         }
     }
 
+    public void DismissIfOpen()
+    {
+        Close(() => _request.Dismiss());
+    }
+
     private void Close(Action respond)
     {
         if (_closed) return;

@@ -75,6 +75,12 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "create_new_webview_dismiss", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void create_new_webview_dismiss(nuint request_handle);
 
+        [DllImport(__DllName, EntryPoint = "authentication_request_authenticate", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void authentication_request_authenticate(nuint request_handle, byte* username, byte* password);
+
+        [DllImport(__DllName, EntryPoint = "authentication_request_dismiss", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void authentication_request_dismiss(nuint request_handle);
+
         [DllImport(__DllName, EntryPoint = "webview_destroy", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void webview_destroy(void* handle);
 
@@ -264,6 +270,8 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, byte*, long, int, int, int, int, nuint, void> on_show_select_element;
         public delegate* unmanaged[Cdecl]<void*, byte*, int, int, nuint, void> on_show_context_menu;
         public delegate* unmanaged[Cdecl]<void*, nuint, void> on_request_create_new_webview;
+        public delegate* unmanaged[Cdecl]<void*, byte*, byte, nuint, void> on_request_authentication;
+        public delegate* unmanaged[Cdecl]<void*, void> on_hide_embedder_control;
         public delegate* unmanaged[Cdecl]<void*, CScreenGeometry*, byte> get_screen_geometry;
     }
 

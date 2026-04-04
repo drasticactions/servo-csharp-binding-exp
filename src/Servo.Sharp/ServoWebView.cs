@@ -33,6 +33,8 @@ public sealed class ServoWebView : IDisposable
     public event EventHandler<UnloadRequestEventArgs>? UnloadRequested;
     public event EventHandler<MediaSessionEventArgs>? MediaSessionEvent;
     public event EventHandler<CreateNewWebViewRequestEventArgs>? CreateNewWebViewRequested;
+    public event EventHandler<AuthenticationRequestEventArgs>? AuthenticationRequested;
+    public event EventHandler? HideEmbedderControlRequested;
 
     public unsafe ServoWebView(ServoEngine engine, RenderingContext renderingContext, string? initialUrl = null)
         : this(engine, renderingContext.Handle, initialUrl) { }
@@ -117,6 +119,8 @@ public sealed class ServoWebView : IDisposable
             on_request_unload = &OnRequestUnloadImpl,
             on_media_session_event = &OnMediaSessionEventImpl,
             on_request_create_new_webview = &OnRequestCreateNewWebViewImpl,
+            on_request_authentication = &OnRequestAuthenticationImpl,
+            on_hide_embedder_control = &OnHideEmbedderControlImpl,
         };
     }
 
@@ -634,5 +638,25 @@ public sealed class ServoWebView : IDisposable
             handler.Invoke(w, args);
         else
             args.Dismiss(); // no handler, dismiss to clean up the native request
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnRequestAuthenticationImpl(void* ud, byte* url, byte forProxy, nuint handle)
+    {
+        if (!TryGet(ud, out var w)) return;
+        var urlStr = Marshal.PtrToStringUTF8((nint)url) ?? "";
+        var args = new AuthenticationRequestEventArgs(urlStr, forProxy != 0, handle);
+        var handler = w.AuthenticationRequested;
+        if (handler != null)
+            handler.Invoke(w, args);
+        else
+            args.Dismiss(); // no handler, dismiss (no credentials)
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnHideEmbedderControlImpl(void* ud)
+    {
+        if (TryGet(ud, out var w))
+            w.HideEmbedderControlRequested?.Invoke(w, EventArgs.Empty);
     }
 }

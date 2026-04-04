@@ -67,6 +67,10 @@ pub struct WebViewCallbacks {
 
     pub on_request_create_new_webview: Option<extern "C" fn(*mut c_void, usize)>,
 
+    pub on_request_authentication: Option<extern "C" fn(*mut c_void, *const c_char, u8, usize)>,
+
+    pub on_hide_embedder_control: Option<extern "C" fn(*mut c_void)>,
+
     pub get_screen_geometry: Option<extern "C" fn(*mut c_void, *mut CScreenGeometry) -> u8>,
 }
 

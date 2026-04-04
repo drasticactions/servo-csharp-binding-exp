@@ -11,14 +11,16 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 use servo::{
-    AllowOrDenyRequest, ClipboardDelegate, ConsoleLogLevel, CreateNewWebViewRequest,
-    Cursor, InputEvent, InputEventId, InputEventResult, JSValue, LoadStatus, MediaSessionEvent,
-    NavigationRequest, PermissionRequest, PrefValue, RenderingContext,
-    Scroll, ScreenGeometry, Servo, ServoBuilder, ServoDelegate, ServoError,
-    SoftwareRenderingContext, StringRequest, WebView, WebViewBuilder, WebViewDelegate,
-    DevicePoint, DeviceIntSize, DeviceIntRect, DeviceIntPoint, DeviceVector2D, WebViewPoint,
-    EmbedderControl, SimpleDialog, SelectElement, ContextMenu, ContextMenuAction,
+    AllowOrDenyRequest, AuthenticationRequest, ClipboardDelegate, ConsoleLogLevel,
+    CreateNewWebViewRequest, Cursor, InputEvent, InputEventId, InputEventResult,
+    JSValue, LoadStatus, MediaSessionEvent, NavigationRequest, PermissionRequest,
+    PrefValue, RenderingContext, Scroll, ScreenGeometry, Servo, ServoBuilder,
+    ServoDelegate, ServoError, SoftwareRenderingContext, StringRequest, WebView,
+    WebViewBuilder, WebViewDelegate, DevicePoint, DeviceIntSize, DeviceIntRect,
+    DeviceIntPoint, DeviceVector2D, WebViewPoint, EmbedderControl, SimpleDialog,
+    SelectElement, ContextMenu, ContextMenuAction,
 };
+use servo::EmbedderControlId;
 use servo::SelectElementOptionOrOptgroup;
 use servo::ContextMenuItem;
 use servo::input_events::{
@@ -616,6 +618,27 @@ impl WebViewDelegate for FfiWebViewDelegate {
         }
         // If no callback, CreateNewWebViewRequest drops and no new webview is created.
     }
+
+    fn request_authentication(&self, _webview: WebView, request: AuthenticationRequest) {
+        if let Some(cb) = self.callbacks.on_request_authentication {
+            let url_str = request.url().as_str().to_string();
+            let for_proxy = request.for_proxy() as u8;
+            let handle = Box::into_raw(Box::new(request)) as usize;
+            if let Ok(c) = CString::new(url_str) {
+                cb(self.ud(), c.as_ptr(), for_proxy, handle);
+            } else {
+                // Can't pass URL, drop the request (no auth).
+                let _ = unsafe { Box::from_raw(handle as *mut AuthenticationRequest) };
+            }
+        }
+        // If no callback, AuthenticationRequest drops and no credentials are sent.
+    }
+
+    fn hide_embedder_control(&self, _webview: WebView, _control_id: EmbedderControlId) {
+        if let Some(cb) = self.callbacks.on_hide_embedder_control {
+            cb(self.ud());
+        }
+    }
 }
 
 struct WebViewHandle {
@@ -686,6 +709,28 @@ pub extern "C" fn create_new_webview_build(
 pub extern "C" fn create_new_webview_dismiss(request_handle: usize) {
     if request_handle != 0 {
         unsafe { drop(Box::from_raw(request_handle as *mut CreateNewWebViewRequest)); }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn authentication_request_authenticate(
+    request_handle: usize,
+    username: *const c_char,
+    password: *const c_char,
+) {
+    if request_handle == 0 { return; }
+    let request = unsafe { *Box::from_raw(request_handle as *mut AuthenticationRequest) };
+    let u = if username.is_null() { String::new() }
+            else { unsafe { CStr::from_ptr(username) }.to_str().unwrap_or_default().to_string() };
+    let p = if password.is_null() { String::new() }
+            else { unsafe { CStr::from_ptr(password) }.to_str().unwrap_or_default().to_string() };
+    request.authenticate(u, p);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn authentication_request_dismiss(request_handle: usize) {
+    if request_handle != 0 {
+        unsafe { drop(Box::from_raw(request_handle as *mut AuthenticationRequest)); }
     }
 }
 
