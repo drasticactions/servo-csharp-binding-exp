@@ -15,4 +15,8 @@
     <ProjectReference Include="..\Servo.Sharp\Servo.Sharp.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AvaloniaResource Include="Themes\**\*.xaml" />
+  </ItemGroup>
+
 </Project>

@@ -298,16 +298,19 @@ public partial class MainWindow : Window
             {
                 Content = tabContent,
                 Padding = new Thickness(8, 4),
-                Background = isActive
-                    ? Brushes.White
-                    : new SolidColorBrush(Color.Parse("#E8E8E8")),
                 BorderThickness = new Thickness(1, 1, 1, isActive ? 0 : 1),
-                BorderBrush = new SolidColorBrush(Color.Parse("#CCCCCC")),
                 CornerRadius = new CornerRadius(4, 4, 0, 0),
                 Margin = new Thickness(1, 0),
                 MinWidth = 60,
                 LogicalIndex = i,
             };
+
+            tabItem.Bind(DragTabItem.BackgroundProperty,
+                tabItem.GetResourceObservable(isActive
+                    ? "SystemControlBackgroundAltHighBrush"
+                    : "SystemControlBackgroundBaseLowBrush"));
+            tabItem.Bind(DragTabItem.BorderBrushProperty,
+                tabItem.GetResourceObservable("SystemControlForegroundBaseLowBrush"));
 
             TabStrip.Children.Add(tabItem);
         }

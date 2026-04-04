@@ -266,7 +266,8 @@ public class ServoWebViewControl : Control
                     return;
                 }
 
-                var overlay = new SelectElementOverlay(_contentHost, e);
+                var overlay = new SelectElementOverlay();
+                overlay.Initialize(_contentHost, e);
                 _activeSelectOverlay = overlay;
                 _contentHost.Children.Add(overlay);
             });
@@ -314,7 +315,8 @@ public class ServoWebViewControl : Control
                     return;
                 }
 
-                var overlay = new AuthenticationOverlay(_contentHost, e);
+                var overlay = new AuthenticationOverlay();
+                overlay.Initialize(_contentHost, e);
                 _activeAuthOverlay = overlay;
                 _contentHost.Children.Add(overlay);
             });

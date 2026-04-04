@@ -1,0 +1,10 @@
+<Styles xmlns="https://github.com/avaloniaui">
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <MergeResourceInclude Source="avares://Servo.Sharp.Avalonia/Themes/Fluent/SelectElementOverlay.xaml" />
+        <MergeResourceInclude Source="avares://Servo.Sharp.Avalonia/Themes/Fluent/AuthenticationOverlay.xaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Styles.Resources>
+</Styles>
