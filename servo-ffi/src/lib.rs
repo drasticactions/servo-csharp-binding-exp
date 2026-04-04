@@ -22,6 +22,8 @@ use servo::{
 };
 use servo::EmbedderControlId;
 use servo::{WebResourceLoad, WebResourceResponse};
+use servo::{Notification, RegisterOrUnregister, TraversalId};
+use servo::protocol_handler::ProtocolHandlerRegistration;
 use servo::SelectElementOptionOrOptgroup;
 use servo::ContextMenuItem;
 use servo::input_events::{
@@ -180,6 +182,16 @@ impl ServoDelegate for FfiServoDelegate {
             fire_web_resource_callback(cb, self.ud(), load);
         }
         // If no callback, WebResourceLoad drops → DoNotIntercept.
+    }
+
+    fn show_notification(&self, notification: Notification) {
+        if let Some(cb) = self.callbacks.on_show_notification {
+            let title_ok = CString::new(notification.title);
+            let body_ok = CString::new(notification.body);
+            if let (Ok(t), Ok(b)) = (title_ok, body_ok) {
+                cb(self.ud(), t.as_ptr(), b.as_ptr());
+            }
+        }
     }
 }
 
@@ -653,6 +665,63 @@ impl WebViewDelegate for FfiWebViewDelegate {
             fire_web_resource_callback(cb, self.ud(), load);
         }
         // If no callback, WebResourceLoad drops → DoNotIntercept.
+    }
+
+    fn notify_status_text_changed(&self, _webview: WebView, status: Option<String>) {
+        if let Some(cb) = self.callbacks.on_status_text_changed {
+            match status {
+                Some(s) => { if let Ok(c) = CString::new(s) { cb(self.ud(), c.as_ptr()); } },
+                None => cb(self.ud(), std::ptr::null()),
+            }
+        }
+    }
+
+    fn notify_traversal_complete(&self, _webview: WebView, _: TraversalId) {
+        if let Some(cb) = self.callbacks.on_traversal_complete {
+            cb(self.ud());
+        }
+    }
+
+    fn request_move_to(&self, _webview: WebView, point: DeviceIntPoint) {
+        if let Some(cb) = self.callbacks.on_request_move_to {
+            cb(self.ud(), point.x, point.y);
+        }
+    }
+
+    fn request_resize_to(&self, _webview: WebView, size: DeviceIntSize) {
+        if let Some(cb) = self.callbacks.on_request_resize_to {
+            cb(self.ud(), size.width, size.height);
+        }
+    }
+
+    fn request_protocol_handler(&self, _webview: WebView, registration: ProtocolHandlerRegistration, request: AllowOrDenyRequest) {
+        if let Some(cb) = self.callbacks.on_request_protocol_handler {
+            let reg_type = match registration.register_or_unregister {
+                RegisterOrUnregister::Register => 0u8,
+                RegisterOrUnregister::Unregister => 1u8,
+            };
+            let handle = Box::into_raw(Box::new(request)) as usize;
+            let scheme_ok = CString::new(registration.scheme);
+            let url_ok = CString::new(registration.url.as_str());
+            if let (Ok(scheme), Ok(url)) = (scheme_ok, url_ok) {
+                cb(self.ud(), scheme.as_ptr(), url.as_ptr(), reg_type, handle);
+            } else {
+                // Can't form strings, deny by default.
+                let req = unsafe { *Box::from_raw(handle as *mut AllowOrDenyRequest) };
+                req.deny();
+            }
+        }
+        // If no callback, AllowOrDenyRequest drops → default deny.
+    }
+
+    fn show_notification(&self, _webview: WebView, notification: Notification) {
+        if let Some(cb) = self.callbacks.on_show_notification {
+            let title_ok = CString::new(notification.title);
+            let body_ok = CString::new(notification.body);
+            if let (Ok(t), Ok(b)) = (title_ok, body_ok) {
+                cb(self.ud(), t.as_ptr(), b.as_ptr());
+            }
+        }
     }
 }
 
@@ -1235,6 +1304,20 @@ pub extern "C" fn permission_request_allow(request_handle: usize) {
 pub extern "C" fn permission_request_deny(request_handle: usize) {
     if request_handle == 0 { return; }
     let req = unsafe { *Box::from_raw(request_handle as *mut PermissionRequest) };
+    req.deny();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn allow_or_deny_request_allow(request_handle: usize) {
+    if request_handle == 0 { return; }
+    let req = unsafe { *Box::from_raw(request_handle as *mut AllowOrDenyRequest) };
+    req.allow();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn allow_or_deny_request_deny(request_handle: usize) {
+    if request_handle == 0 { return; }
+    let req = unsafe { *Box::from_raw(request_handle as *mut AllowOrDenyRequest) };
     req.deny();
 }
 

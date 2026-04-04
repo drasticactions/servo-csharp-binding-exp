@@ -168,6 +168,26 @@ public partial class MainWindow : Window
                 StatusText.Text = $"[{e.Level}] {e.Message}";
         };
 
+        wv.StatusTextChanged += (_, e) =>
+        {
+            if (IsActiveTab(tab))
+                StatusText.Text = e.StatusText ?? "Ready";
+        };
+
+        wv.MoveToRequested += (_, e) => Position = new PixelPoint(e.X, e.Y);
+
+        wv.ResizeToRequested += (_, e) =>
+        {
+            Width = e.Width;
+            Height = e.Height;
+        };
+
+        wv.TraversalCompleted += (_, _) =>
+        {
+            if (IsActiveTab(tab))
+                StatusText.Text = "Navigation traversal complete";
+        };
+
         wv.Crashed += (_, e) =>
         {
             if (IsActiveTab(tab))

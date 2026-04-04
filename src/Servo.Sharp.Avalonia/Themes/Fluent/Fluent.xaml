@@ -4,6 +4,8 @@
       <ResourceDictionary.MergedDictionaries>
         <MergeResourceInclude Source="avares://Servo.Sharp.Avalonia/Themes/Fluent/SelectElementOverlay.xaml" />
         <MergeResourceInclude Source="avares://Servo.Sharp.Avalonia/Themes/Fluent/AuthenticationOverlay.xaml" />
+        <MergeResourceInclude Source="avares://Servo.Sharp.Avalonia/Themes/Fluent/NotificationOverlay.xaml" />
+        <MergeResourceInclude Source="avares://Servo.Sharp.Avalonia/Themes/Fluent/ProtocolHandlerOverlay.xaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
   </Styles.Resources>

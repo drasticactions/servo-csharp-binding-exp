@@ -36,6 +36,12 @@ public sealed class ServoWebView : IDisposable
     public event EventHandler<AuthenticationRequestEventArgs>? AuthenticationRequested;
     public event EventHandler? HideEmbedderControlRequested;
     public event EventHandler<WebResourceLoadEventArgs>? WebResourceLoadRequested;
+    public event EventHandler<StatusTextChangedEventArgs>? StatusTextChanged;
+    public event EventHandler? TraversalCompleted;
+    public event EventHandler<MoveToRequestEventArgs>? MoveToRequested;
+    public event EventHandler<ResizeToRequestEventArgs>? ResizeToRequested;
+    public event EventHandler<ProtocolHandlerRequestEventArgs>? ProtocolHandlerRequested;
+    public event EventHandler<NotificationEventArgs>? NotificationRequested;
 
     public unsafe ServoWebView(ServoEngine engine, RenderingContext renderingContext, string? initialUrl = null)
         : this(engine, renderingContext.Handle, initialUrl) { }
@@ -123,6 +129,12 @@ public sealed class ServoWebView : IDisposable
             on_request_authentication = &OnRequestAuthenticationImpl,
             on_hide_embedder_control = &OnHideEmbedderControlImpl,
             on_load_web_resource = &OnLoadWebResourceImpl,
+            on_status_text_changed = &OnStatusTextChangedImpl,
+            on_traversal_complete = &OnTraversalCompleteImpl,
+            on_request_move_to = &OnRequestMoveToImpl,
+            on_request_resize_to = &OnRequestResizeToImpl,
+            on_request_protocol_handler = &OnRequestProtocolHandlerImpl,
+            on_show_notification = &OnShowNotificationImpl,
         };
     }
 
@@ -673,6 +685,49 @@ public sealed class ServoWebView : IDisposable
         if (handler != null)
             handler.Invoke(w, args);
         else
-            args.Allow(); // no handler, let load proceed normally
+            args.Allow();
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnStatusTextChangedImpl(void* ud, byte* status)
+    {
+        if (!TryGet(ud, out var w)) return;
+        var s = status == null ? null : Marshal.PtrToStringUTF8((nint)status);
+        w.StatusTextChanged?.Invoke(w, new StatusTextChangedEventArgs(s));
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnTraversalCompleteImpl(void* ud)
+    { if (TryGet(ud, out var w)) w.TraversalCompleted?.Invoke(w, EventArgs.Empty); }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnRequestMoveToImpl(void* ud, int x, int y)
+    { if (TryGet(ud, out var w)) w.MoveToRequested?.Invoke(w, new MoveToRequestEventArgs(x, y)); }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnRequestResizeToImpl(void* ud, int width, int height)
+    { if (TryGet(ud, out var w)) w.ResizeToRequested?.Invoke(w, new ResizeToRequestEventArgs(width, height)); }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnRequestProtocolHandlerImpl(void* ud, byte* scheme, byte* url, byte regType, nuint handle)
+    {
+        if (!TryGet(ud, out var w)) return;
+        var s = Marshal.PtrToStringUTF8((nint)scheme) ?? "";
+        var u = Marshal.PtrToStringUTF8((nint)url) ?? "";
+        var args = new ProtocolHandlerRequestEventArgs(s, u, (ProtocolHandlerAction)regType, handle);
+        var handler = w.ProtocolHandlerRequested;
+        if (handler != null)
+            handler.Invoke(w, args);
+        else
+            args.Deny(); // default: deny
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnShowNotificationImpl(void* ud, byte* title, byte* body)
+    {
+        if (!TryGet(ud, out var w)) return;
+        var t = Marshal.PtrToStringUTF8((nint)title) ?? "";
+        var b = Marshal.PtrToStringUTF8((nint)body) ?? "";
+        w.NotificationRequested?.Invoke(w, new NotificationEventArgs(t, b));
     }
 }

@@ -210,6 +210,12 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "permission_request_deny", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void permission_request_deny(nuint request_handle);
 
+        [DllImport(__DllName, EntryPoint = "allow_or_deny_request_allow", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void allow_or_deny_request_allow(nuint request_handle);
+
+        [DllImport(__DllName, EntryPoint = "allow_or_deny_request_deny", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void allow_or_deny_request_deny(nuint request_handle);
+
         [DllImport(__DllName, EntryPoint = "unload_request_allow", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void unload_request_allow(nuint request_handle);
 
@@ -250,6 +256,7 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, byte, byte*, void> on_console_message;
         public delegate* unmanaged[Cdecl]<void*, byte> on_request_devtools_connection;
         public delegate* unmanaged[Cdecl]<void*, byte*, byte*, byte, byte, nuint, void> on_load_web_resource;
+        public delegate* unmanaged[Cdecl]<void*, byte*, byte*, void> on_show_notification;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -283,6 +290,12 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, byte*, byte, nuint, void> on_request_authentication;
         public delegate* unmanaged[Cdecl]<void*, void> on_hide_embedder_control;
         public delegate* unmanaged[Cdecl]<void*, byte*, byte*, byte, byte, nuint, void> on_load_web_resource;
+        public delegate* unmanaged[Cdecl]<void*, byte*, void> on_status_text_changed;
+        public delegate* unmanaged[Cdecl]<void*, void> on_traversal_complete;
+        public delegate* unmanaged[Cdecl]<void*, int, int, void> on_request_move_to;
+        public delegate* unmanaged[Cdecl]<void*, int, int, void> on_request_resize_to;
+        public delegate* unmanaged[Cdecl]<void*, byte*, byte*, byte, nuint, void> on_request_protocol_handler;
+        public delegate* unmanaged[Cdecl]<void*, byte*, byte*, void> on_show_notification;
         public delegate* unmanaged[Cdecl]<void*, CScreenGeometry*, byte> get_screen_geometry;
     }
 

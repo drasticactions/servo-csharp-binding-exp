@@ -88,6 +88,12 @@ public class ServoWebViewControl : Control
     public event EventHandler<AuthenticationRequestEventArgs>? AuthenticationRequested;
     public event EventHandler? HideEmbedderControlRequested;
     public event EventHandler<WebResourceLoadEventArgs>? WebResourceLoadRequested;
+    public event EventHandler<StatusTextChangedEventArgs>? StatusTextChanged;
+    public event EventHandler? TraversalCompleted;
+    public event EventHandler<MoveToRequestEventArgs>? MoveToRequested;
+    public event EventHandler<ResizeToRequestEventArgs>? ResizeToRequested;
+    public event EventHandler<ProtocolHandlerRequestEventArgs>? ProtocolHandlerRequested;
+    public event EventHandler<NotificationEventArgs>? NotificationRequested;
 
     private string? _pageTitle;
     private bool _isLoading;
@@ -101,11 +107,13 @@ public class ServoWebViewControl : Control
     private double _lastScaling = 1.0;
     private SelectElementOverlay? _activeSelectOverlay;
     private AuthenticationOverlay? _activeAuthOverlay;
+    private ProtocolHandlerOverlay? _activeProtocolHandlerOverlay;
     private ContextMenu? _activeContextMenu;
 
     private bool HasModalOverlay =>
         _activeSelectOverlay != null ||
         _activeAuthOverlay != null ||
+        _activeProtocolHandlerOverlay != null ||
         _activeContextMenu != null;
 
     public ServoWebViewControl()
@@ -337,6 +345,49 @@ public class ServoWebViewControl : Control
             else
                 e.Allow();
         };
+        _webView.StatusTextChanged += (_, e) =>
+            Dispatcher.UIThread.Post(() => StatusTextChanged?.Invoke(this, e));
+        _webView.TraversalCompleted += (_, e) =>
+            Dispatcher.UIThread.Post(() => TraversalCompleted?.Invoke(this, e));
+        _webView.MoveToRequested += (_, e) =>
+            Dispatcher.UIThread.Post(() => MoveToRequested?.Invoke(this, e));
+        _webView.ResizeToRequested += (_, e) =>
+            Dispatcher.UIThread.Post(() => ResizeToRequested?.Invoke(this, e));
+        _webView.ProtocolHandlerRequested += (_, e) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_contentHost == null) { e.Deny(); return; }
+
+                if (ProtocolHandlerRequested != null)
+                {
+                    ProtocolHandlerRequested.Invoke(this, e);
+                    return;
+                }
+
+                var overlay = new ProtocolHandlerOverlay();
+                overlay.Initialize(_contentHost, e);
+                _activeProtocolHandlerOverlay = overlay;
+                _contentHost.Children.Add(overlay);
+            });
+        };
+        _webView.NotificationRequested += (_, e) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_contentHost == null) return;
+
+                if (NotificationRequested != null)
+                {
+                    NotificationRequested.Invoke(this, e);
+                    return;
+                }
+
+                var overlay = new NotificationOverlay();
+                overlay.Initialize(_contentHost, e);
+                _contentHost.Children.Add(overlay);
+            });
+        };
 
         _webView.Show();
         _webView.Focus();
@@ -513,6 +564,12 @@ public class ServoWebViewControl : Control
         {
             _activeAuthOverlay.DismissIfOpen();
             _activeAuthOverlay = null;
+        }
+
+        if (_activeProtocolHandlerOverlay != null)
+        {
+            _activeProtocolHandlerOverlay.DismissIfOpen();
+            _activeProtocolHandlerOverlay = null;
         }
 
         if (_activeContextMenu != null)
