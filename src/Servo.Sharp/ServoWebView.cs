@@ -42,6 +42,7 @@ public sealed class ServoWebView : IDisposable
     public event EventHandler<ResizeToRequestEventArgs>? ResizeToRequested;
     public event EventHandler<ProtocolHandlerRequestEventArgs>? ProtocolHandlerRequested;
     public event EventHandler<NotificationEventArgs>? NotificationRequested;
+    public event EventHandler<BluetoothDeviceSelectionEventArgs>? BluetoothDeviceSelectionRequested;
 
     public unsafe ServoWebView(ServoEngine engine, RenderingContext renderingContext, string? initialUrl = null)
         : this(engine, renderingContext.Handle, initialUrl) { }
@@ -135,6 +136,7 @@ public sealed class ServoWebView : IDisposable
             on_request_resize_to = &OnRequestResizeToImpl,
             on_request_protocol_handler = &OnRequestProtocolHandlerImpl,
             on_show_notification = &OnShowNotificationImpl,
+            on_show_bluetooth_device_dialog = &OnShowBluetoothDeviceDialogImpl,
         };
     }
 
@@ -729,5 +731,19 @@ public sealed class ServoWebView : IDisposable
         var t = Marshal.PtrToStringUTF8((nint)title) ?? "";
         var b = Marshal.PtrToStringUTF8((nint)body) ?? "";
         w.NotificationRequested?.Invoke(w, new NotificationEventArgs(t, b));
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnShowBluetoothDeviceDialogImpl(void* ud, byte* devicesJson, nuint handle)
+    {
+        if (!TryGet(ud, out var w)) return;
+        var json = Marshal.PtrToStringUTF8((nint)devicesJson) ?? "[]";
+        var devices = BluetoothDeviceSelectionEventArgs.ParseDevicesJson(json);
+        var args = new BluetoothDeviceSelectionEventArgs(devices, handle);
+        var handler = w.BluetoothDeviceSelectionRequested;
+        if (handler != null)
+            handler.Invoke(w, args);
+        else
+            args.Cancel();
     }
 }

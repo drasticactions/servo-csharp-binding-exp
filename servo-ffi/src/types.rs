@@ -81,17 +81,15 @@ pub struct WebViewCallbacks {
 
     pub on_traversal_complete: Option<extern "C" fn(*mut c_void)>,
 
-    /// Parameters: user_data, x, y
     pub on_request_move_to: Option<extern "C" fn(*mut c_void, i32, i32)>,
 
-    /// Parameters: user_data, width, height
     pub on_request_resize_to: Option<extern "C" fn(*mut c_void, i32, i32)>,
 
-    /// Parameters: user_data, scheme, url, register_or_unregister (0=register, 1=unregister), handle
     pub on_request_protocol_handler: Option<extern "C" fn(*mut c_void, *const c_char, *const c_char, u8, usize)>,
 
-    /// Parameters: user_data, title, body
     pub on_show_notification: Option<extern "C" fn(*mut c_void, *const c_char, *const c_char)>,
+
+    pub on_show_bluetooth_device_dialog: Option<extern "C" fn(*mut c_void, *const c_char, usize)>,
 
     pub get_screen_geometry: Option<extern "C" fn(*mut c_void, *mut CScreenGeometry) -> u8>,
 }

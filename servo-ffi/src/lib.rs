@@ -22,7 +22,7 @@ use servo::{
 };
 use servo::EmbedderControlId;
 use servo::{WebResourceLoad, WebResourceResponse};
-use servo::{Notification, RegisterOrUnregister, TraversalId};
+use servo::{Notification, RegisterOrUnregister, TraversalId, BluetoothDeviceSelectionRequest};
 use servo::protocol_handler::ProtocolHandlerRegistration;
 use servo::SelectElementOptionOrOptgroup;
 use servo::ContextMenuItem;
@@ -723,6 +723,26 @@ impl WebViewDelegate for FfiWebViewDelegate {
             }
         }
     }
+
+    fn show_bluetooth_device_dialog(&self, _webview: WebView, request: BluetoothDeviceSelectionRequest) {
+        if let Some(cb) = self.callbacks.on_show_bluetooth_device_dialog {
+            let devices: Vec<String> = request.devices().iter().map(|d| {
+                format!("{{\"name\":{},\"address\":{}}}",
+                    serde_json::to_string(&d.name).unwrap_or_else(|_| "\"\"".into()),
+                    serde_json::to_string(&d.address).unwrap_or_else(|_| "\"\"".into()))
+            }).collect();
+            let json = format!("[{}]", devices.join(","));
+            let handle = Box::into_raw(Box::new(request)) as usize;
+            if let Ok(c) = CString::new(json) {
+                cb(self.ud(), c.as_ptr(), handle);
+            } else {
+                // Can't form JSON, cancel the request.
+                let req = unsafe { *Box::from_raw(handle as *mut BluetoothDeviceSelectionRequest) };
+                let _ = req.cancel();
+            }
+        }
+        // If no callback, request drops → None (cancel).
+    }
 }
 
 struct WebViewHandle {
@@ -1319,6 +1339,25 @@ pub extern "C" fn allow_or_deny_request_deny(request_handle: usize) {
     if request_handle == 0 { return; }
     let req = unsafe { *Box::from_raw(request_handle as *mut AllowOrDenyRequest) };
     req.deny();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bluetooth_device_pick(request_handle: usize, device_index: usize) {
+    if request_handle == 0 { return; }
+    let req = unsafe { *Box::from_raw(request_handle as *mut BluetoothDeviceSelectionRequest) };
+    if let Some(device) = req.devices().get(device_index) {
+        let device = device.clone();
+        let _ = req.pick_device(&device);
+    } else {
+        let _ = req.cancel();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn bluetooth_device_cancel(request_handle: usize) {
+    if request_handle == 0 { return; }
+    let req = unsafe { *Box::from_raw(request_handle as *mut BluetoothDeviceSelectionRequest) };
+    let _ = req.cancel();
 }
 
 #[unsafe(no_mangle)]

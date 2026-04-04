@@ -216,6 +216,12 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "allow_or_deny_request_deny", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void allow_or_deny_request_deny(nuint request_handle);
 
+        [DllImport(__DllName, EntryPoint = "bluetooth_device_pick", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void bluetooth_device_pick(nuint request_handle, nuint device_index);
+
+        [DllImport(__DllName, EntryPoint = "bluetooth_device_cancel", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void bluetooth_device_cancel(nuint request_handle);
+
         [DllImport(__DllName, EntryPoint = "unload_request_allow", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void unload_request_allow(nuint request_handle);
 
@@ -292,10 +298,26 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, byte*, byte*, byte, byte, nuint, void> on_load_web_resource;
         public delegate* unmanaged[Cdecl]<void*, byte*, void> on_status_text_changed;
         public delegate* unmanaged[Cdecl]<void*, void> on_traversal_complete;
+        /// <summary>
+        ///  Parameters: user_data, x, y
+        /// </summary>
         public delegate* unmanaged[Cdecl]<void*, int, int, void> on_request_move_to;
+        /// <summary>
+        ///  Parameters: user_data, width, height
+        /// </summary>
         public delegate* unmanaged[Cdecl]<void*, int, int, void> on_request_resize_to;
+        /// <summary>
+        ///  Parameters: user_data, scheme, url, register_or_unregister (0=register, 1=unregister), handle
+        /// </summary>
         public delegate* unmanaged[Cdecl]<void*, byte*, byte*, byte, nuint, void> on_request_protocol_handler;
+        /// <summary>
+        ///  Parameters: user_data, title, body
+        /// </summary>
         public delegate* unmanaged[Cdecl]<void*, byte*, byte*, void> on_show_notification;
+        /// <summary>
+        ///  Parameters: user_data, devices_json, handle
+        /// </summary>
+        public delegate* unmanaged[Cdecl]<void*, byte*, nuint, void> on_show_bluetooth_device_dialog;
         public delegate* unmanaged[Cdecl]<void*, CScreenGeometry*, byte> get_screen_geometry;
     }
 

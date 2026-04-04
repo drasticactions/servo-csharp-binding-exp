@@ -94,6 +94,7 @@ public class ServoWebViewControl : Control
     public event EventHandler<ResizeToRequestEventArgs>? ResizeToRequested;
     public event EventHandler<ProtocolHandlerRequestEventArgs>? ProtocolHandlerRequested;
     public event EventHandler<NotificationEventArgs>? NotificationRequested;
+    public event EventHandler<BluetoothDeviceSelectionEventArgs>? BluetoothDeviceSelectionRequested;
 
     private string? _pageTitle;
     private bool _isLoading;
@@ -108,12 +109,14 @@ public class ServoWebViewControl : Control
     private SelectElementOverlay? _activeSelectOverlay;
     private AuthenticationOverlay? _activeAuthOverlay;
     private ProtocolHandlerOverlay? _activeProtocolHandlerOverlay;
+    private BluetoothDeviceOverlay? _activeBluetoothOverlay;
     private ContextMenu? _activeContextMenu;
 
     private bool HasModalOverlay =>
         _activeSelectOverlay != null ||
         _activeAuthOverlay != null ||
         _activeProtocolHandlerOverlay != null ||
+        _activeBluetoothOverlay != null ||
         _activeContextMenu != null;
 
     public ServoWebViewControl()
@@ -388,6 +391,24 @@ public class ServoWebViewControl : Control
                 _contentHost.Children.Add(overlay);
             });
         };
+        _webView.BluetoothDeviceSelectionRequested += (_, e) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_contentHost == null) { e.Cancel(); return; }
+
+                if (BluetoothDeviceSelectionRequested != null)
+                {
+                    BluetoothDeviceSelectionRequested.Invoke(this, e);
+                    return;
+                }
+
+                var overlay = new BluetoothDeviceOverlay();
+                overlay.Initialize(_contentHost, e);
+                _activeBluetoothOverlay = overlay;
+                _contentHost.Children.Add(overlay);
+            });
+        };
 
         _webView.Show();
         _webView.Focus();
@@ -570,6 +591,12 @@ public class ServoWebViewControl : Control
         {
             _activeProtocolHandlerOverlay.DismissIfOpen();
             _activeProtocolHandlerOverlay = null;
+        }
+
+        if (_activeBluetoothOverlay != null)
+        {
+            _activeBluetoothOverlay.DismissIfOpen();
+            _activeBluetoothOverlay = null;
         }
 
         if (_activeContextMenu != null)
