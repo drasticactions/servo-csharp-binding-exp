@@ -72,6 +72,7 @@ fn wv_ref(handle: *mut c_void) -> Option<&'static WebViewHandle> {
     if handle.is_null() { None } else { Some(unsafe { &*(handle as *mut WebViewHandle) }) }
 }
 
+
 #[unsafe(no_mangle)]
 pub extern "C" fn servo_last_error() -> *const c_char {
     LAST_ERROR.with(|e| {

@@ -241,15 +241,9 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "context_menu_dismiss", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void context_menu_dismiss(nuint request_handle);
 
-        /// <summary>
-        ///  Report a gamepad haptic effect request as succeeded.
-        /// </summary>
         [DllImport(__DllName, EntryPoint = "gamepad_haptic_effect_succeeded", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void gamepad_haptic_effect_succeeded(nuint handle);
 
-        /// <summary>
-        ///  Report a gamepad haptic effect request as failed.
-        /// </summary>
         [DllImport(__DllName, EntryPoint = "gamepad_haptic_effect_failed", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void gamepad_haptic_effect_failed(nuint handle);
 
