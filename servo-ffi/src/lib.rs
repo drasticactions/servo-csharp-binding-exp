@@ -23,6 +23,7 @@ use servo::{
 use servo::EmbedderControlId;
 use servo::{WebResourceLoad, WebResourceResponse};
 use servo::{Notification, RegisterOrUnregister, TraversalId, BluetoothDeviceSelectionRequest};
+use servo::{GamepadDelegate, GamepadHapticEffectRequest, GamepadHapticEffectRequestType};
 use servo::protocol_handler::ProtocolHandlerRegistration;
 use servo::SelectElementOptionOrOptgroup;
 use servo::ContextMenuItem;
@@ -765,13 +766,16 @@ pub extern "C" fn webview_new(
     let result = ffi_catch(std::panic::AssertUnwindSafe(|| {
         let servo = unsafe { &*(servo_handle as *mut Servo) };
         let rc = unsafe { &*(rendering_ctx_handle as *mut Rc<dyn RenderingContext>) };
+        let gamepad_cb = callbacks.on_gamepad_haptic_effect;
+        let gamepad_ud = callbacks.user_data;
         let delegate = FfiWebViewDelegate { callbacks };
         let mut builder = WebViewBuilder::new(servo, rc.clone())
             .delegate(Rc::new(delegate));
-        // Only set a custom clipboard delegate if any callback is provided.
-        // Otherwise Servo uses its built-in clipboard support.
         if clipboard.get_text.is_some() || clipboard.set_text.is_some() || clipboard.clear.is_some() {
             builder = builder.clipboard_delegate(Rc::new(FfiClipboardDelegate { callbacks: clipboard }));
+        }
+        if let Some(cb) = gamepad_cb {
+            builder = builder.gamepad_delegate(Rc::new(FfiGamepadDelegate { callback: cb, user_data: gamepad_ud }));
         }
         if !initial_url.is_null() {
             let url_str = unsafe { CStr::from_ptr(initial_url) }.to_str().unwrap_or_default();
@@ -797,11 +801,16 @@ pub extern "C" fn create_new_webview_build(
     let result = ffi_catch(std::panic::AssertUnwindSafe(|| {
         let request = unsafe { *Box::from_raw(request_handle as *mut CreateNewWebViewRequest) };
         let rc = unsafe { &*(rendering_ctx_handle as *mut Rc<dyn RenderingContext>) };
+        let gamepad_cb = callbacks.on_gamepad_haptic_effect;
+        let gamepad_ud = callbacks.user_data;
         let delegate = FfiWebViewDelegate { callbacks };
         let mut builder = request.builder(rc.clone())
             .delegate(Rc::new(delegate));
         if clipboard.get_text.is_some() || clipboard.set_text.is_some() || clipboard.clear.is_some() {
             builder = builder.clipboard_delegate(Rc::new(FfiClipboardDelegate { callbacks: clipboard }));
+        }
+        if let Some(cb) = gamepad_cb {
+            builder = builder.gamepad_delegate(Rc::new(FfiGamepadDelegate { callback: cb, user_data: gamepad_ud }));
         }
         let webview = builder.build();
         Box::into_raw(Box::new(WebViewHandle { webview, _rendering_context: rc.clone() })) as *mut c_void
@@ -1507,6 +1516,39 @@ impl ClipboardDelegate for FfiClipboardDelegate {
                 cb(self.callbacks.user_data, c.as_ptr());
             }
         }
+    }
+}
+
+struct FfiGamepadDelegate {
+    callback: extern "C" fn(*mut c_void, usize, u8, usize),
+    user_data: *mut c_void,
+}
+
+impl GamepadDelegate for FfiGamepadDelegate {
+    fn handle_haptic_effect_request(&self, request: GamepadHapticEffectRequest) {
+        let index = request.gamepad_index();
+        let effect_type = match request.request_type() {
+            GamepadHapticEffectRequestType::Play(_) => 0u8,
+            GamepadHapticEffectRequestType::Stop => 1u8,
+        };
+        let handle = Box::into_raw(Box::new(request)) as usize;
+        (self.callback)(self.user_data, index, effect_type, handle);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn gamepad_haptic_effect_succeeded(handle: usize) {
+    if handle != 0 {
+        let req = unsafe { *Box::from_raw(handle as *mut GamepadHapticEffectRequest) };
+        req.succeeded();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn gamepad_haptic_effect_failed(handle: usize) {
+    if handle != 0 {
+        let req = unsafe { *Box::from_raw(handle as *mut GamepadHapticEffectRequest) };
+        req.failed();
     }
 }
 

@@ -87,6 +87,10 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "web_resource_load_intercept", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void web_resource_load_intercept(nuint handle, ushort status_code, byte* body, nuint body_len);
 
+        /// <summary>
+        ///  Cancel a WebResourceLoad (triggers a network error).
+        ///  The handle is consumed.
+        /// </summary>
         [DllImport(__DllName, EntryPoint = "web_resource_load_cancel", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void web_resource_load_cancel(nuint handle);
 
@@ -237,6 +241,18 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "context_menu_dismiss", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void context_menu_dismiss(nuint request_handle);
 
+        /// <summary>
+        ///  Report a gamepad haptic effect request as succeeded.
+        /// </summary>
+        [DllImport(__DllName, EntryPoint = "gamepad_haptic_effect_succeeded", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void gamepad_haptic_effect_succeeded(nuint handle);
+
+        /// <summary>
+        ///  Report a gamepad haptic effect request as failed.
+        /// </summary>
+        [DllImport(__DllName, EntryPoint = "gamepad_haptic_effect_failed", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void gamepad_haptic_effect_failed(nuint handle);
+
         [DllImport(__DllName, EntryPoint = "webview_take_screenshot", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void webview_take_screenshot(void* handle, delegate* unmanaged[Cdecl]<void*, byte*, uint, uint, nuint, void> callback, void* callback_data);
 
@@ -298,26 +314,12 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, byte*, byte*, byte, byte, nuint, void> on_load_web_resource;
         public delegate* unmanaged[Cdecl]<void*, byte*, void> on_status_text_changed;
         public delegate* unmanaged[Cdecl]<void*, void> on_traversal_complete;
-        /// <summary>
-        ///  Parameters: user_data, x, y
-        /// </summary>
         public delegate* unmanaged[Cdecl]<void*, int, int, void> on_request_move_to;
-        /// <summary>
-        ///  Parameters: user_data, width, height
-        /// </summary>
         public delegate* unmanaged[Cdecl]<void*, int, int, void> on_request_resize_to;
-        /// <summary>
-        ///  Parameters: user_data, scheme, url, register_or_unregister (0=register, 1=unregister), handle
-        /// </summary>
         public delegate* unmanaged[Cdecl]<void*, byte*, byte*, byte, nuint, void> on_request_protocol_handler;
-        /// <summary>
-        ///  Parameters: user_data, title, body
-        /// </summary>
         public delegate* unmanaged[Cdecl]<void*, byte*, byte*, void> on_show_notification;
-        /// <summary>
-        ///  Parameters: user_data, devices_json, handle
-        /// </summary>
         public delegate* unmanaged[Cdecl]<void*, byte*, nuint, void> on_show_bluetooth_device_dialog;
+        public delegate* unmanaged[Cdecl]<void*, nuint, byte, nuint, void> on_gamepad_haptic_effect;
         public delegate* unmanaged[Cdecl]<void*, CScreenGeometry*, byte> get_screen_geometry;
     }
 

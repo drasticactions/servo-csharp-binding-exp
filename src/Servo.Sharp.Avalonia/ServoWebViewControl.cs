@@ -95,6 +95,7 @@ public class ServoWebViewControl : Control
     public event EventHandler<ProtocolHandlerRequestEventArgs>? ProtocolHandlerRequested;
     public event EventHandler<NotificationEventArgs>? NotificationRequested;
     public event EventHandler<BluetoothDeviceSelectionEventArgs>? BluetoothDeviceSelectionRequested;
+    public event EventHandler<GamepadHapticEffectEventArgs>? GamepadHapticEffectRequested;
 
     private string? _pageTitle;
     private bool _isLoading;
@@ -408,6 +409,13 @@ public class ServoWebViewControl : Control
                 _activeBluetoothOverlay = overlay;
                 _contentHost.Children.Add(overlay);
             });
+        };
+        _webView.GamepadHapticEffectRequested += (_, e) =>
+        {
+            if (GamepadHapticEffectRequested != null)
+                GamepadHapticEffectRequested.Invoke(this, e);
+            else
+                e.Failed(); // no handler, report failure
         };
 
         _webView.Show();

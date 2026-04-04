@@ -43,6 +43,7 @@ public sealed class ServoWebView : IDisposable
     public event EventHandler<ProtocolHandlerRequestEventArgs>? ProtocolHandlerRequested;
     public event EventHandler<NotificationEventArgs>? NotificationRequested;
     public event EventHandler<BluetoothDeviceSelectionEventArgs>? BluetoothDeviceSelectionRequested;
+    public event EventHandler<GamepadHapticEffectEventArgs>? GamepadHapticEffectRequested;
 
     public unsafe ServoWebView(ServoEngine engine, RenderingContext renderingContext, string? initialUrl = null)
         : this(engine, renderingContext.Handle, initialUrl) { }
@@ -137,6 +138,7 @@ public sealed class ServoWebView : IDisposable
             on_request_protocol_handler = &OnRequestProtocolHandlerImpl,
             on_show_notification = &OnShowNotificationImpl,
             on_show_bluetooth_device_dialog = &OnShowBluetoothDeviceDialogImpl,
+            on_gamepad_haptic_effect = &OnGamepadHapticEffectImpl,
         };
     }
 
@@ -745,5 +747,17 @@ public sealed class ServoWebView : IDisposable
             handler.Invoke(w, args);
         else
             args.Cancel();
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnGamepadHapticEffectImpl(void* ud, nuint gamepadIndex, byte effectType, nuint handle)
+    {
+        if (!TryGet(ud, out var w)) return;
+        var args = new GamepadHapticEffectEventArgs((int)gamepadIndex, (GamepadHapticEffectType)effectType, handle);
+        var handler = w.GamepadHapticEffectRequested;
+        if (handler != null)
+            handler.Invoke(w, args);
+        else
+            args.Failed(); // no handler, report failure
     }
 }

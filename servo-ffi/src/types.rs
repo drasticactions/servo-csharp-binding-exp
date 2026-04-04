@@ -91,6 +91,8 @@ pub struct WebViewCallbacks {
 
     pub on_show_bluetooth_device_dialog: Option<extern "C" fn(*mut c_void, *const c_char, usize)>,
 
+    pub on_gamepad_haptic_effect: Option<extern "C" fn(*mut c_void, usize, u8, usize)>,
+
     pub get_screen_geometry: Option<extern "C" fn(*mut c_void, *mut CScreenGeometry) -> u8>,
 }
 
