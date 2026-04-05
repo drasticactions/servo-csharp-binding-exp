@@ -30,6 +30,13 @@ fi
 
 cd "$SCRIPT_DIR/servo-ffi"
 
+# Set up GStreamer pkg-config paths for media-gstreamer feature
+if [ "$(uname -s)" = "Darwin" ] && [ -d "/Library/Frameworks/GStreamer.framework/Versions/1.0" ]; then
+    GST_ROOT="/Library/Frameworks/GStreamer.framework/Versions/1.0"
+    export PKG_CONFIG_PATH="${GST_ROOT}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+    export PATH="${GST_ROOT}/bin${PATH:+:$PATH}"
+fi
+
 # Work around glslopt
 # I'm building on Arch and TL;DR whatever it doesn't matter.
 GLSLOPT_THREADS=""
@@ -123,4 +130,102 @@ if [ -d "$RESOURCES_SRC" ]; then
     rm -rf "$RESOURCES_DST"
     cp -r "$RESOURCES_SRC" "$RESOURCES_DST"
     echo "  resources/ copied"
+fi
+
+# Copy GStreamer libraries for media playback (macOS)
+if [ "$(uname -s)" = "Darwin" ] && [ -d "${GST_ROOT:-}/lib" ]; then
+    GSTREAMER_DST="$SCRIPT_DIR/artifacts/lib"
+    rm -rf "$GSTREAMER_DST"
+    mkdir -p "$GSTREAMER_DST"
+
+    GST_PLUGIN_DIR="$GST_ROOT/lib/gstreamer-1.0"
+    GST_LIB_DIR="$GST_ROOT/lib"
+
+    # Plugin list matching Servo's gstreamer_plugin_lists/{common,macos}.rs.in
+    GST_PLUGINS=(
+        # common
+        gstcoreelements gstnice gstapp gstaudioconvert gstaudioresample gstgio gstogg
+        gstopengl gstopus gstplayback gsttheora gsttypefindfunctions gstvideoconvertscale
+        gstvolume gstvorbis gstaudiofx gstaudioparsers gstautodetect gstdeinterlace
+        gstid3demux gstinterleave gstisomp4 gstmatroska gstrtp gstrtpmanager
+        gstvideofilter gstvpx gstwavparse gstaudiobuffersplit gstdtls gstid3tag
+        gstproxy gstvideoparsersbad gstwebrtc gstlibav
+        # macos
+        gstosxaudio gstosxvideo gstapplemedia
+    )
+
+    # Copy plugins
+    for plugin in "${GST_PLUGINS[@]}"; do
+        src="$GST_PLUGIN_DIR/lib${plugin}.dylib"
+        if [ -f "$src" ]; then
+            cp "$src" "$GSTREAMER_DST/"
+        fi
+    done
+
+    # Resolve an @rpath reference to an actual file in the GStreamer framework.
+    # Handles both @rpath/libfoo.dylib and @rpath/lib/libfoo.dylib patterns.
+    resolve_rpath_dep() {
+        local dep="$1"
+        local basename="${dep#@rpath/}"
+        # Strip leading "lib/" if present (framework internal layout)
+        local flat="${basename#lib/}"
+        for search_dir in "$GST_LIB_DIR" "$GST_PLUGIN_DIR" "$GST_LIB_DIR/lib"; do
+            [ -f "$search_dir/$basename" ] && echo "$search_dir/$basename" && return
+            [ -f "$search_dir/$flat" ] && echo "$search_dir/$flat" && return
+        done
+        # Also try the exact flat name in the main lib dir
+        [ -f "$GST_LIB_DIR/$flat" ] && echo "$GST_LIB_DIR/$flat" && return
+        return 1
+    }
+
+    # Recursively copy all @rpath dependencies from the GStreamer framework
+    copy_gst_deps() {
+        for dep in $(otool -L "$1" 2>/dev/null | grep '@rpath/' | awk '{print $1}'); do
+            local flat_name
+            flat_name="$(basename "$dep")"
+            if [ -f "$GSTREAMER_DST/$flat_name" ]; then
+                continue  # already copied
+            fi
+            local resolved
+            if resolved="$(resolve_rpath_dep "$dep")"; then
+                cp "$resolved" "$GSTREAMER_DST/$flat_name"
+                copy_gst_deps "$GSTREAMER_DST/$flat_name"
+            fi
+        done
+    }
+
+    # Start from libservo_ffi and all plugins
+    copy_gst_deps "$NATIVE_LIB"
+    for f in "$GSTREAMER_DST"/*.dylib; do
+        [ -f "$f" ] && copy_gst_deps "$f"
+    done
+
+    # Rewrite all @rpath references in copied dylibs to use @loader_path
+    # so they find each other in the flat lib/ directory
+    rewrite_gst_rpaths() {
+        for f in "$GSTREAMER_DST"/*.dylib; do
+            [ -f "$f" ] || continue
+            for dep in $(otool -L "$f" 2>/dev/null | grep '@rpath/' | awk '{print $1}'); do
+                local flat_name
+                flat_name="$(basename "$dep")"
+                install_name_tool -change "$dep" "@loader_path/$flat_name" "$f" 2>/dev/null || true
+            done
+            # Also rewrite the install name itself if it uses @rpath
+            local id
+            id="$(otool -D "$f" 2>/dev/null | tail -1)"
+            if [[ "$id" == @rpath/* ]]; then
+                local flat_id
+                flat_id="$(basename "$id")"
+                install_name_tool -id "@loader_path/$flat_id" "$f" 2>/dev/null || true
+            fi
+        done
+    }
+    rewrite_gst_rpaths
+
+    # Add rpath to the copied libservo_ffi so it can find GStreamer libs at runtime
+    COPIED_LIB="$NATIVE_DIR/${LIB_PREFIX}servo_ffi.$LIB_EXT"
+    install_name_tool -add_rpath @loader_path/lib "$COPIED_LIB" 2>/dev/null || true
+
+    GSTCOUNT=$(ls -1 "$GSTREAMER_DST" 2>/dev/null | wc -l | tr -d ' ')
+    echo "  GStreamer: $GSTCOUNT libraries → artifacts/lib/"
 fi

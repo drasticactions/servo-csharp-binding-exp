@@ -58,4 +58,15 @@
           Visible="false" />
   </ItemGroup>
 
+  <!-- GStreamer plugin libraries (for media playback) -->
+  <PropertyGroup>
+    <ServoGStreamerLibDir>$(ServoArtifactsDir)/lib/</ServoGStreamerLibDir>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(ServoGStreamerLibDir)')">
+    <None Include="$(ServoGStreamerLibDir)**/*"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="lib/%(RecursiveDir)%(Filename)%(Extension)"
+          Visible="false" />
+  </ItemGroup>
+
 </Project>
