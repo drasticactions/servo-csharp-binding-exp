@@ -107,6 +107,7 @@ public class ServoWebViewControl : Control
     private ServoBitmapSurface? _surface;
     private Panel? _contentHost;
     private double _lastScaling = 1.0;
+    private TopLevel? _topLevel;
     private SelectElementOverlay? _activeSelectOverlay;
     private AuthenticationOverlay? _activeAuthOverlay;
     private ProtocolHandlerOverlay? _activeProtocolHandlerOverlay;
@@ -146,11 +147,21 @@ public class ServoWebViewControl : Control
         VisualChildren.Add(_contentHost);
         LogicalChildren.Add(_contentHost);
 
+        _topLevel = TopLevel.GetTopLevel(this);
+        if (_topLevel != null)
+            _topLevel.ScalingChanged += OnScalingChanged;
+
         Dispatcher.UIThread.Post(InitializeServo, DispatcherPriority.Loaded);
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        if (_topLevel != null)
+        {
+            _topLevel.ScalingChanged -= OnScalingChanged;
+            _topLevel = null;
+        }
+
         Cleanup();
         base.OnDetachedFromVisualTree(e);
     }
@@ -445,6 +456,8 @@ public class ServoWebViewControl : Control
             _surface.MarkFrameReady();
         }, DispatcherPriority.Render);
     }
+
+    private void OnScalingChanged(object? sender, EventArgs e) => ResizeServo();
 
     private void ResizeServo()
     {
