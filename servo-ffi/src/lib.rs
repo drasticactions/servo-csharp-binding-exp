@@ -21,8 +21,11 @@ use servo::{
     WebViewBuilder, WebViewDelegate, DevicePoint, DeviceIntSize, DeviceIntRect,
     DeviceIntPoint, DeviceVector2D, WebViewPoint, EmbedderControl, SimpleDialog,
     SelectElement, ContextMenu, ContextMenuAction,
+    UserContentManager, UserScript, NetworkManager, SiteDataManager, StorageType,
+    SiteData, CacheEntry, ColorPicker, FilePicker, RgbColor,
 };
 use servo::EmbedderControlId;
+use servo::user_contents::UserStyleSheet;
 use servo::{WebResourceLoad, WebResourceResponse};
 use servo::{Notification, RegisterOrUnregister, TraversalId, BluetoothDeviceSelectionRequest};
 use servo::{GamepadDelegate, GamepadHapticEffectRequest, GamepadHapticEffectRequestType};
@@ -39,6 +42,7 @@ use servo::input_events::{
     MouseLeftViewportEvent, MouseMoveEvent, TouchEvent, TouchEventType, TouchId, WheelDelta,
     WheelEvent, WheelMode,
 };
+use std::path::PathBuf;
 use url::Url;
 
 use crate::types::*;
@@ -751,7 +755,46 @@ impl WebViewDelegate for FfiWebViewDelegate {
                     }
                 }
             },
-            _ => {}, // Other embedder controls not yet handled.
+            EmbedderControl::FilePicker(file_picker) => {
+                if let Some(cb) = self.callbacks.on_show_file_picker {
+                    let patterns: Vec<String> = file_picker.filter_patterns().iter()
+                        .map(|p| serde_json::to_string(&p.0).unwrap_or_else(|_| "\"\"".to_string()))
+                        .collect();
+                    let patterns_json = format!("[{}]", patterns.join(","));
+                    let allow_multiple = file_picker.allow_select_multiple() as u8;
+                    let current: Vec<String> = file_picker.current_paths().iter()
+                        .map(|p| serde_json::to_string(&p.to_string_lossy()).unwrap_or_else(|_| "\"\"".to_string()))
+                        .collect();
+                    let current_json = format!("[{}]", current.join(","));
+                    let handle = Box::into_raw(Box::new(file_picker)) as usize;
+                    let patterns_ok = CString::new(patterns_json);
+                    let current_ok = CString::new(current_json);
+                    if let (Ok(p), Ok(c)) = (patterns_ok, current_ok) {
+                        cb(self.ud(), p.as_ptr(), allow_multiple, c.as_ptr(), handle);
+                    } else {
+                        // Can't form strings, dismiss the picker
+                        let picker = unsafe { *Box::from_raw(handle as *mut FilePicker) };
+                        picker.dismiss();
+                    }
+                }
+                // If no callback, FilePicker drops → dismiss (None) via Drop impl.
+            },
+            EmbedderControl::ColorPicker(color_picker) => {
+                if let Some(cb) = self.callbacks.on_show_color_picker {
+                    let (has_color, r, g, b) = match color_picker.current_color() {
+                        Some(c) => (1u8, c.red, c.green, c.blue),
+                        None => (0, 0, 0, 0),
+                    };
+                    let pos = color_picker.position();
+                    let handle = Box::into_raw(Box::new(color_picker)) as usize;
+                    cb(self.ud(), has_color, r, g, b,
+                       pos.min.x, pos.min.y,
+                       pos.size().width, pos.size().height,
+                       handle);
+                }
+                // If no callback, ColorPicker drops → sends current color via Drop impl.
+            },
+            _ => {}, // InputMethod not yet handled.
         }
     }
 
@@ -1766,4 +1809,240 @@ pub extern "C" fn webview_get_favicon(
             std::ptr::null_mut()
         },
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn user_content_manager_new(servo_handle: *mut c_void) -> *mut c_void {
+    if servo_handle.is_null() { return std::ptr::null_mut(); }
+    let servo = unsafe { &*(servo_handle as *mut Servo) };
+    let ucm = UserContentManager::new(servo);
+    Box::into_raw(Box::new(ucm)) as *mut c_void
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn user_content_manager_destroy(handle: *mut c_void) {
+    if !handle.is_null() {
+        unsafe { drop(Box::from_raw(handle as *mut UserContentManager)); }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn user_script_new(
+    script: *const c_char,
+    source_file: *const c_char,
+) -> *mut c_void {
+    if script.is_null() { return std::ptr::null_mut(); }
+    let script_str = unsafe { CStr::from_ptr(script) }.to_str().unwrap_or_default().to_string();
+    let source = if source_file.is_null() {
+        None
+    } else {
+        let s = unsafe { CStr::from_ptr(source_file) }.to_str().unwrap_or_default();
+        Some(PathBuf::from(s))
+    };
+    let us = UserScript::new(script_str, source);
+    Box::into_raw(Box::new(Rc::new(us))) as *mut c_void
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn user_script_destroy(handle: *mut c_void) {
+    if !handle.is_null() {
+        unsafe { drop(Box::from_raw(handle as *mut Rc<UserScript>)); }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn user_stylesheet_new(
+    source: *const c_char,
+    url: *const c_char,
+) -> *mut c_void {
+    if source.is_null() || url.is_null() { return std::ptr::null_mut(); }
+    let source_str = unsafe { CStr::from_ptr(source) }.to_str().unwrap_or_default().to_string();
+    let url_str = unsafe { CStr::from_ptr(url) }.to_str().unwrap_or_default();
+    let parsed_url = match Url::parse(url_str) {
+        Ok(u) => u,
+        Err(_) => {
+            set_last_error(format!("Invalid URL for stylesheet: {url_str}"));
+            return std::ptr::null_mut();
+        }
+    };
+    let uss = UserStyleSheet::new(source_str, parsed_url);
+    Box::into_raw(Box::new(Rc::new(uss))) as *mut c_void
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn user_stylesheet_destroy(handle: *mut c_void) {
+    if !handle.is_null() {
+        unsafe { drop(Box::from_raw(handle as *mut Rc<UserStyleSheet>)); }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn user_content_manager_add_script(
+    ucm_handle: *mut c_void,
+    script_handle: *mut c_void,
+) {
+    if ucm_handle.is_null() || script_handle.is_null() { return; }
+    let ucm = unsafe { &*(ucm_handle as *mut UserContentManager) };
+    let script = unsafe { &*(script_handle as *mut Rc<UserScript>) };
+    ucm.add_script(script.clone());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn user_content_manager_remove_script(
+    ucm_handle: *mut c_void,
+    script_handle: *mut c_void,
+) {
+    if ucm_handle.is_null() || script_handle.is_null() { return; }
+    let ucm = unsafe { &*(ucm_handle as *mut UserContentManager) };
+    let script = unsafe { &*(script_handle as *mut Rc<UserScript>) };
+    ucm.remove_script(script.clone());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn user_content_manager_add_stylesheet(
+    ucm_handle: *mut c_void,
+    stylesheet_handle: *mut c_void,
+) {
+    if ucm_handle.is_null() || stylesheet_handle.is_null() { return; }
+    let ucm = unsafe { &*(ucm_handle as *mut UserContentManager) };
+    let stylesheet = unsafe { &*(stylesheet_handle as *mut Rc<UserStyleSheet>) };
+    ucm.add_stylesheet(stylesheet.clone());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn user_content_manager_remove_stylesheet(
+    ucm_handle: *mut c_void,
+    stylesheet_handle: *mut c_void,
+) {
+    if ucm_handle.is_null() || stylesheet_handle.is_null() { return; }
+    let ucm = unsafe { &*(ucm_handle as *mut UserContentManager) };
+    let stylesheet = unsafe { &*(stylesheet_handle as *mut Rc<UserStyleSheet>) };
+    ucm.remove_stylesheet(stylesheet.clone());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_site_data(
+    handle: *mut c_void,
+    storage_types: u8,
+) -> *mut c_char {
+    if handle.is_null() { return std::ptr::null_mut(); }
+    let servo = unsafe { &*(handle as *mut Servo) };
+    let st = StorageType::from_bits_truncate(storage_types);
+    let data = servo.site_data_manager().site_data(st);
+    let json = site_data_to_json(&data);
+    CString::new(json).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+}
+
+fn site_data_to_json(data: &[SiteData]) -> String {
+    let items: Vec<String> = data.iter().map(|sd| {
+        format!(
+            r#"{{"name":{},"storage_types":{}}}"#,
+            serde_json::to_string(&sd.name()).unwrap_or_else(|_| "\"\"".to_string()),
+            sd.storage_types().bits(),
+        )
+    }).collect();
+    format!("[{}]", items.join(","))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_clear_site_data(
+    handle: *mut c_void,
+    sites: *const *const c_char,
+    sites_len: usize,
+    storage_types: u8,
+) {
+    if handle.is_null() { return; }
+    let servo = unsafe { &*(handle as *mut Servo) };
+    let st = StorageType::from_bits_truncate(storage_types);
+    let mut site_strs: Vec<String> = Vec::with_capacity(sites_len);
+    if !sites.is_null() && sites_len > 0 {
+        let ptrs = unsafe { std::slice::from_raw_parts(sites, sites_len) };
+        for &ptr in ptrs {
+            if !ptr.is_null() {
+                let s = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or_default().to_string();
+                site_strs.push(s);
+            }
+        }
+    }
+    let refs: Vec<&str> = site_strs.iter().map(|s| s.as_str()).collect();
+    servo.site_data_manager().clear_site_data(&refs, st);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_clear_cookies(handle: *mut c_void) {
+    if handle.is_null() { return; }
+    let servo = unsafe { &*(handle as *mut Servo) };
+    servo.site_data_manager().clear_cookies();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_cache_entries(handle: *mut c_void) -> *mut c_char {
+    if handle.is_null() { return std::ptr::null_mut(); }
+    let servo = unsafe { &*(handle as *mut Servo) };
+    let entries = servo.network_manager().cache_entries();
+    let items: Vec<String> = entries.iter().map(|e| {
+        serde_json::to_string(e.key()).unwrap_or_else(|_| "\"\"".to_string())
+    }).collect();
+    let json = format!("[{}]", items.join(","));
+    CString::new(json).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_clear_cache(handle: *mut c_void) {
+    if handle.is_null() { return; }
+    let servo = unsafe { &*(handle as *mut Servo) };
+    servo.network_manager().clear_cache();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn file_picker_select_and_submit(
+    handle: usize,
+    paths: *const *const c_char,
+    paths_len: usize,
+) {
+    if handle == 0 { return; }
+    let mut picker = unsafe { *Box::from_raw(handle as *mut FilePicker) };
+    let mut path_bufs = Vec::with_capacity(paths_len);
+    if !paths.is_null() && paths_len > 0 {
+        let ptrs = unsafe { std::slice::from_raw_parts(paths, paths_len) };
+        for &ptr in ptrs {
+            if !ptr.is_null() {
+                let s = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap_or_default();
+                path_bufs.push(PathBuf::from(s));
+            }
+        }
+    }
+    picker.select(&path_bufs);
+    picker.submit();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn file_picker_dismiss(handle: usize) {
+    if handle == 0 { return; }
+    let picker = unsafe { *Box::from_raw(handle as *mut FilePicker) };
+    picker.dismiss();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn color_picker_select_and_submit(
+    handle: usize,
+    has_color: u8,
+    r: u8, g: u8, b: u8,
+) {
+    if handle == 0 { return; }
+    let mut picker = unsafe { *Box::from_raw(handle as *mut ColorPicker) };
+    let color = if has_color != 0 {
+        Some(RgbColor { red: r, green: g, blue: b })
+    } else {
+        None
+    };
+    picker.select(color);
+    picker.submit();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn color_picker_dismiss(handle: usize) {
+    if handle == 0 { return; }
+    // Drop sends current color via Drop impl
+    let _ = unsafe { Box::from_raw(handle as *mut ColorPicker) };
 }

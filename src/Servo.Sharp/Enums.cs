@@ -131,3 +131,12 @@ public enum PermissionFeature : byte
     Camera = 2,
     Microphone = 3,
 }
+
+[Flags]
+public enum StorageTypes : byte
+{
+    Cookies = 1 << 0,
+    Local = 1 << 1,
+    Session = 1 << 2,
+    All = Cookies | Local | Session,
+}

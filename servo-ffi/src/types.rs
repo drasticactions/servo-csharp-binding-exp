@@ -94,6 +94,10 @@ pub struct WebViewCallbacks {
     pub on_gamepad_haptic_effect: Option<extern "C" fn(*mut c_void, usize, u8, usize)>,
 
     pub get_screen_geometry: Option<extern "C" fn(*mut c_void, *mut CScreenGeometry) -> u8>,
+
+    pub on_show_file_picker: Option<extern "C" fn(*mut c_void, *const c_char, u8, *const c_char, usize)>,
+
+    pub on_show_color_picker: Option<extern "C" fn(*mut c_void, u8, u8, u8, u8, i32, i32, i32, i32, usize)>,
 }
 
 unsafe impl Send for WebViewCallbacks {}

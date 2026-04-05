@@ -96,6 +96,8 @@ public class ServoWebViewControl : Control
     public event EventHandler<NotificationEventArgs>? NotificationRequested;
     public event EventHandler<BluetoothDeviceSelectionEventArgs>? BluetoothDeviceSelectionRequested;
     public event EventHandler<GamepadHapticEffectEventArgs>? GamepadHapticEffectRequested;
+    public event EventHandler<FilePickerRequestEventArgs>? FilePickerRequested;
+    public event EventHandler<ColorPickerRequestEventArgs>? ColorPickerRequested;
 
     private string? _pageTitle;
     private bool _isLoading;
@@ -113,12 +115,14 @@ public class ServoWebViewControl : Control
     private ProtocolHandlerOverlay? _activeProtocolHandlerOverlay;
     private BluetoothDeviceOverlay? _activeBluetoothOverlay;
     private ContextMenu? _activeContextMenu;
+    private ColorPickerOverlay? _activeColorPickerOverlay;
 
     private bool HasModalOverlay =>
         _activeSelectOverlay != null ||
         _activeAuthOverlay != null ||
         _activeProtocolHandlerOverlay != null ||
         _activeBluetoothOverlay != null ||
+        _activeColorPickerOverlay != null ||
         _activeContextMenu != null;
 
     public ServoWebViewControl()
@@ -428,6 +432,41 @@ public class ServoWebViewControl : Control
             else
                 e.Failed(); // no handler, report failure
         };
+        _webView.FilePickerRequested += (_, e) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (FilePickerRequested != null)
+                {
+                    FilePickerRequested.Invoke(this, e);
+                    return;
+                }
+
+                var topLevel = TopLevel.GetTopLevel(this);
+                if (topLevel != null)
+                    FilePickerHandler.HandleRequest(topLevel, e);
+                else
+                    e.Dismiss();
+            });
+        };
+        _webView.ColorPickerRequested += (_, e) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_contentHost == null) { e.Dismiss(); return; }
+
+                if (ColorPickerRequested != null)
+                {
+                    ColorPickerRequested.Invoke(this, e);
+                    return;
+                }
+
+                var overlay = new ColorPickerOverlay();
+                overlay.Initialize(_contentHost, e);
+                _activeColorPickerOverlay = overlay;
+                _contentHost.Children.Add(overlay);
+            });
+        };
 
         _webView.Show();
         _webView.Focus();
@@ -618,6 +657,12 @@ public class ServoWebViewControl : Control
         {
             _activeBluetoothOverlay.DismissIfOpen();
             _activeBluetoothOverlay = null;
+        }
+
+        if (_activeColorPickerOverlay != null)
+        {
+            _activeColorPickerOverlay.DismissIfOpen();
+            _activeColorPickerOverlay = null;
         }
 
         if (_activeContextMenu != null)

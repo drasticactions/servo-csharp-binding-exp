@@ -44,6 +44,8 @@ public sealed class ServoWebView : IDisposable
     public event EventHandler<NotificationEventArgs>? NotificationRequested;
     public event EventHandler<BluetoothDeviceSelectionEventArgs>? BluetoothDeviceSelectionRequested;
     public event EventHandler<GamepadHapticEffectEventArgs>? GamepadHapticEffectRequested;
+    public event EventHandler<FilePickerRequestEventArgs>? FilePickerRequested;
+    public event EventHandler<ColorPickerRequestEventArgs>? ColorPickerRequested;
 
     public unsafe ServoWebView(ServoEngine engine, RenderingContext renderingContext, string? initialUrl = null)
         : this(engine, renderingContext.Handle, initialUrl) { }
@@ -139,6 +141,8 @@ public sealed class ServoWebView : IDisposable
             on_show_notification = &OnShowNotificationImpl,
             on_show_bluetooth_device_dialog = &OnShowBluetoothDeviceDialogImpl,
             on_gamepad_haptic_effect = &OnGamepadHapticEffectImpl,
+            on_show_file_picker = &OnShowFilePickerImpl,
+            on_show_color_picker = &OnShowColorPickerImpl,
         };
     }
 
@@ -759,5 +763,35 @@ public sealed class ServoWebView : IDisposable
             handler.Invoke(w, args);
         else
             args.Failed(); // no handler, report failure
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnShowFilePickerImpl(void* ud, byte* filterPatternsJson, byte allowMultiple, byte* currentPathsJson, nuint handle)
+    {
+        if (!TryGet(ud, out var w)) return;
+        var patterns = FilePickerRequestEventArgs.ParseJsonArray(
+            Marshal.PtrToStringUTF8((nint)filterPatternsJson) ?? "[]");
+        var current = FilePickerRequestEventArgs.ParseJsonArray(
+            Marshal.PtrToStringUTF8((nint)currentPathsJson) ?? "[]");
+        var args = new FilePickerRequestEventArgs(patterns, allowMultiple != 0, current, handle);
+        var handler = w.FilePickerRequested;
+        if (handler != null)
+            handler.Invoke(w, args);
+        else
+            args.Dismiss(); // no handler, dismiss
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnShowColorPickerImpl(void* ud, byte hasColor, byte r, byte g, byte b,
+        int posX, int posY, int posW, int posH, nuint handle)
+    {
+        if (!TryGet(ud, out var w)) return;
+        RgbColor? color = hasColor != 0 ? new RgbColor(r, g, b) : null;
+        var args = new ColorPickerRequestEventArgs(color, posX, posY, posW, posH, handle);
+        var handler = w.ColorPickerRequested;
+        if (handler != null)
+            handler.Invoke(w, args);
+        else
+            args.Dismiss(); // no handler, dismiss (sends current color)
     }
 }

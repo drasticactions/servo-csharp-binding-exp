@@ -262,6 +262,63 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "webview_get_favicon", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern byte* webview_get_favicon(void* handle, uint* out_width, uint* out_height, byte* out_format, nuint* out_len);
 
+        [DllImport(__DllName, EntryPoint = "user_content_manager_new", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void* user_content_manager_new(void* servo_handle);
+
+        [DllImport(__DllName, EntryPoint = "user_content_manager_destroy", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void user_content_manager_destroy(void* handle);
+
+        [DllImport(__DllName, EntryPoint = "user_script_new", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void* user_script_new(byte* script, byte* source_file);
+
+        [DllImport(__DllName, EntryPoint = "user_script_destroy", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void user_script_destroy(void* handle);
+
+        [DllImport(__DllName, EntryPoint = "user_stylesheet_new", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void* user_stylesheet_new(byte* source, byte* url);
+
+        [DllImport(__DllName, EntryPoint = "user_stylesheet_destroy", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void user_stylesheet_destroy(void* handle);
+
+        [DllImport(__DllName, EntryPoint = "user_content_manager_add_script", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void user_content_manager_add_script(void* ucm_handle, void* script_handle);
+
+        [DllImport(__DllName, EntryPoint = "user_content_manager_remove_script", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void user_content_manager_remove_script(void* ucm_handle, void* script_handle);
+
+        [DllImport(__DllName, EntryPoint = "user_content_manager_add_stylesheet", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void user_content_manager_add_stylesheet(void* ucm_handle, void* stylesheet_handle);
+
+        [DllImport(__DllName, EntryPoint = "user_content_manager_remove_stylesheet", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void user_content_manager_remove_stylesheet(void* ucm_handle, void* stylesheet_handle);
+
+        [DllImport(__DllName, EntryPoint = "servo_site_data", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern byte* servo_site_data(void* handle, byte storage_types);
+
+        [DllImport(__DllName, EntryPoint = "servo_clear_site_data", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void servo_clear_site_data(void* handle, byte** sites, nuint sites_len, byte storage_types);
+
+        [DllImport(__DllName, EntryPoint = "servo_clear_cookies", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void servo_clear_cookies(void* handle);
+
+        [DllImport(__DllName, EntryPoint = "servo_cache_entries", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern byte* servo_cache_entries(void* handle);
+
+        [DllImport(__DllName, EntryPoint = "servo_clear_cache", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void servo_clear_cache(void* handle);
+
+        [DllImport(__DllName, EntryPoint = "file_picker_select_and_submit", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void file_picker_select_and_submit(nuint handle, byte** paths, nuint paths_len);
+
+        [DllImport(__DllName, EntryPoint = "file_picker_dismiss", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void file_picker_dismiss(nuint handle);
+
+        [DllImport(__DllName, EntryPoint = "color_picker_select_and_submit", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void color_picker_select_and_submit(nuint handle, byte has_color, byte r, byte g, byte b);
+
+        [DllImport(__DllName, EntryPoint = "color_picker_dismiss", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void color_picker_dismiss(nuint handle);
+
 
     }
 
@@ -324,6 +381,8 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, byte*, nuint, void> on_show_bluetooth_device_dialog;
         public delegate* unmanaged[Cdecl]<void*, nuint, byte, nuint, void> on_gamepad_haptic_effect;
         public delegate* unmanaged[Cdecl]<void*, CScreenGeometry*, byte> get_screen_geometry;
+        public delegate* unmanaged[Cdecl]<void*, byte*, byte, byte*, nuint, void> on_show_file_picker;
+        public delegate* unmanaged[Cdecl]<void*, byte, byte, byte, byte, int, int, int, int, nuint, void> on_show_color_picker;
     }
 
     [StructLayout(LayoutKind.Sequential)]

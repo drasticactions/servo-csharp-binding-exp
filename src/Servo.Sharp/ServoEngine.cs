@@ -2,6 +2,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace Servo.Sharp;
 
@@ -110,6 +111,59 @@ public sealed class ServoEngine : IDisposable
 
     public IReadOnlyCollection<string> RegisteredSchemes =>
         _protocolRegistry?.RegisteredSchemes ?? Array.Empty<string>();
+
+    public unsafe IReadOnlyList<SiteDataEntry> GetSiteData(StorageTypes storageTypes = StorageTypes.All)
+    {
+        ThrowIfDisposed();
+        var ptr = ServoNative.servo_site_data((void*)_handle, (byte)storageTypes);
+        if (ptr == null) return [];
+        var json = Marshal.PtrToStringUTF8((nint)ptr) ?? "[]";
+        ServoNative.servo_free_string(ptr);
+        return SiteDataEntry.ParseJson(json);
+    }
+
+    public unsafe void ClearSiteData(IReadOnlyList<string> sites, StorageTypes storageTypes = StorageTypes.All)
+    {
+        ThrowIfDisposed();
+        var ptrs = new nint[sites.Count];
+        try
+        {
+            for (int i = 0; i < sites.Count; i++)
+                ptrs[i] = Marshal.StringToCoTaskMemUTF8(sites[i]);
+            fixed (nint* pPtrs = ptrs)
+            {
+                ServoNative.servo_clear_site_data(
+                    (void*)_handle, (byte**)pPtrs, (nuint)sites.Count, (byte)storageTypes);
+            }
+        }
+        finally
+        {
+            foreach (var p in ptrs)
+                if (p != 0) Marshal.FreeCoTaskMem(p);
+        }
+    }
+
+    public unsafe void ClearCookies()
+    {
+        ThrowIfDisposed();
+        ServoNative.servo_clear_cookies((void*)_handle);
+    }
+
+    public unsafe IReadOnlyList<string> GetCacheEntries()
+    {
+        ThrowIfDisposed();
+        var ptr = ServoNative.servo_cache_entries((void*)_handle);
+        if (ptr == null) return [];
+        var json = Marshal.PtrToStringUTF8((nint)ptr) ?? "[]";
+        ServoNative.servo_free_string(ptr);
+        return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+    }
+
+    public unsafe void ClearCache()
+    {
+        ThrowIfDisposed();
+        ServoNative.servo_clear_cache((void*)_handle);
+    }
 
     internal nint Handle
     {
