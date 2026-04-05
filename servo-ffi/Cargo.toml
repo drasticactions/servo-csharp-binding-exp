@@ -12,6 +12,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "gamepad"] }
+servo-base = { path = "../external/servo/components/shared/base" }
+servo-profile-traits = { path = "../external/servo/components/shared/profile" }
 dpi = "0.1"
 euclid = "0.22"
 gleam = "0.15"

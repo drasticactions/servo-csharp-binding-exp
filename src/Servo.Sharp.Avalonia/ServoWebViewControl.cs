@@ -98,6 +98,7 @@ public class ServoWebViewControl : Control
     public event EventHandler<NotificationEventArgs>? NotificationRequested;
     public event EventHandler<BluetoothDeviceSelectionEventArgs>? BluetoothDeviceSelectionRequested;
     public event EventHandler<GamepadHapticEffectEventArgs>? GamepadHapticEffectRequested;
+    public event EventHandler<HistoryChangedEventArgs>? HistoryChanged;
     public event EventHandler<FilePickerRequestEventArgs>? FilePickerRequested;
     public event EventHandler<ColorPickerRequestEventArgs>? ColorPickerRequested;
     public event EventHandler<InputMethodEventArgs>? InputMethodRequested;
@@ -279,10 +280,11 @@ public class ServoWebViewControl : Control
         });
         _webView.CursorChanged += (_, e) => Dispatcher.UIThread.Post(() =>
             Cursor = new Cursor(AvaloniaKeyMapping.ToAvaloniaCursor(e.Cursor)));
-        _webView.HistoryChanged += (_, _) => Dispatcher.UIThread.Post(() =>
+        _webView.HistoryChanged += (_, e) => Dispatcher.UIThread.Post(() =>
         {
             CanGoBack = _webView?.CanGoBack ?? false;
             CanGoForward = _webView?.CanGoForward ?? false;
+            HistoryChanged?.Invoke(this, e);
         });
         _webView.Crashed += (_, e) => Dispatcher.UIThread.Post(() => Crashed?.Invoke(this, e));
         _webView.WebViewConsoleMessage += (_, e) => Dispatcher.UIThread.Post(() => ConsoleMessage?.Invoke(this, e));

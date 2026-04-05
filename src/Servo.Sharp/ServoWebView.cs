@@ -567,8 +567,13 @@ public sealed class ServoWebView : IDisposable
     { if (TryGet(ud, out var w)) w.InputEventHandled?.Invoke(w, new InputEventHandledEventArgs(eventId, result)); }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static unsafe void OnHistoryChangedImpl(void* ud, nuint current, nuint total)
-    { if (TryGet(ud, out var w)) w.HistoryChanged?.Invoke(w, new HistoryChangedEventArgs((int)current, (int)total)); }
+    private static unsafe void OnHistoryChangedImpl(void* ud, byte* urlsJson, nuint current, nuint total)
+    {
+        if (!TryGet(ud, out var w)) return;
+        var json = Marshal.PtrToStringUTF8((nint)urlsJson) ?? "[]";
+        var urls = HistoryChangedEventArgs.ParseUrlsJson(json);
+        w.HistoryChanged?.Invoke(w, new HistoryChangedEventArgs(urls, (int)current, (int)total));
+    }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe void OnClosedImpl(void* ud)

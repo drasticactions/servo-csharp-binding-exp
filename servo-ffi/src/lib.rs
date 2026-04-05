@@ -45,6 +45,8 @@ use servo::input_events::{
     WheelEvent, WheelMode,
 };
 use std::path::PathBuf;
+use servo_base::generic_channel::GenericCallback;
+use profile_traits::mem::MemoryReportResult;
 use url::Url;
 
 use crate::types::*;
@@ -611,7 +613,13 @@ impl WebViewDelegate for FfiWebViewDelegate {
 
     fn notify_history_changed(&self, _webview: WebView, entries: Vec<Url>, current: usize) {
         if let Some(cb) = self.callbacks.on_history_changed {
-            cb(self.ud(), current, entries.len());
+            let urls: Vec<String> = entries.iter()
+                .map(|u| serde_json::to_string(u.as_str()).unwrap_or_else(|_| "\"\"".to_string()))
+                .collect();
+            let json = format!("[{}]", urls.join(","));
+            if let Ok(c) = CString::new(json) {
+                cb(self.ud(), c.as_ptr(), current, entries.len());
+            }
         }
     }
 
@@ -2150,4 +2158,35 @@ pub extern "C" fn webview_send_ime_dismissed(handle: *mut c_void) {
     if let Some(wv) = wv_ref(handle) {
         wv.webview.notify_input_event(InputEvent::Ime(ImeEvent::Dismissed));
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_create_memory_report(
+    handle: *mut c_void,
+    callback: extern "C" fn(*mut c_void, *const c_char),
+    callback_data: *mut c_void,
+) {
+    if handle.is_null() { return; }
+    let servo = unsafe { &*(handle as *mut Servo) };
+    let cb_data = callback_data as usize;
+    let cb = callback;
+
+    let generic_cb = GenericCallback::new(move |result: Result<MemoryReportResult, _>| {
+        let ud = cb_data as *mut c_void;
+        match result {
+            Ok(report) => {
+                let json = serde_json::to_string(&report).unwrap_or_else(|_| "{}".to_string());
+                if let Ok(c) = CString::new(json) {
+                    cb(ud, c.as_ptr());
+                } else {
+                    cb(ud, std::ptr::null());
+                }
+            },
+            Err(_) => {
+                cb(ud, std::ptr::null());
+            },
+        }
+    }).expect("Failed to create memory report callback");
+
+    servo.create_memory_report(generic_cb);
 }

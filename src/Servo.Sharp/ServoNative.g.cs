@@ -341,6 +341,9 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "webview_send_ime_dismissed", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void webview_send_ime_dismissed(void* handle);
 
+        [DllImport(__DllName, EntryPoint = "servo_create_memory_report", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void servo_create_memory_report(void* handle, delegate* unmanaged[Cdecl]<void*, byte*, void> callback, void* callback_data);
+
 
     }
 
@@ -376,7 +379,7 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, byte, void> on_animating_changed;
         public delegate* unmanaged[Cdecl]<void*, void> on_favicon_changed;
         public delegate* unmanaged[Cdecl]<void*, ulong, byte, void> on_input_event_handled;
-        public delegate* unmanaged[Cdecl]<void*, nuint, nuint, void> on_history_changed;
+        public delegate* unmanaged[Cdecl]<void*, byte*, nuint, nuint, void> on_history_changed;
         public delegate* unmanaged[Cdecl]<void*, void> on_closed;
         public delegate* unmanaged[Cdecl]<void*, byte, void> on_fullscreen_changed;
         public delegate* unmanaged[Cdecl]<void*, byte*, byte*, void> on_crashed;

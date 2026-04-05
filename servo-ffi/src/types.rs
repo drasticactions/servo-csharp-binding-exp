@@ -43,7 +43,7 @@ pub struct WebViewCallbacks {
     pub on_animating_changed: Option<extern "C" fn(*mut c_void, u8)>,
     pub on_favicon_changed: Option<extern "C" fn(*mut c_void)>,
     pub on_input_event_handled: Option<extern "C" fn(*mut c_void, u64, u8)>,
-    pub on_history_changed: Option<extern "C" fn(*mut c_void, usize, usize)>,
+    pub on_history_changed: Option<extern "C" fn(*mut c_void, *const c_char, usize, usize)>,
     pub on_closed: Option<extern "C" fn(*mut c_void)>,
     pub on_fullscreen_changed: Option<extern "C" fn(*mut c_void, u8)>,
 

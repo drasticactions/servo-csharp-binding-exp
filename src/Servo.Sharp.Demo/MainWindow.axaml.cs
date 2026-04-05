@@ -30,7 +30,9 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         BackButton.Click += (_, _) => ActiveWebView?.GoBack();
+        BackButton.PointerPressed += OnBackButtonPointerPressed;
         ForwardButton.Click += (_, _) => ActiveWebView?.GoForward();
+        ForwardButton.PointerPressed += OnForwardButtonPointerPressed;
         ReloadButton.Click += (_, _) => ActiveWebView?.Reload();
         UrlBar.KeyDown += (_, e) => { if (e.Key == Key.Enter) NavigateToUrlBar(); };
         NewTabButton.Click += (_, _) => AddTab(NewTabUrl);
@@ -219,6 +221,12 @@ public partial class MainWindow : Window
                 StatusText.Text = $"CRASHED: {e.Reason}";
         };
 
+        wv.HistoryChanged += (_, e) =>
+        {
+            tab.HistoryUrls = e.Urls;
+            tab.HistoryIndex = e.CurrentIndex;
+        };
+
         wv.CreateNewWebViewRequested += (_, e) =>
         {
             var newWebView = new ServoWebViewControl
@@ -369,6 +377,55 @@ public partial class MainWindow : Window
         return ServoLocator.Engine.RegisteredSchemes.Contains(scheme);
     }
 
+    private void OnBackButtonPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(BackButton).Properties.IsRightButtonPressed) return;
+        e.Handled = true;
+        var tab = _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count ? _tabs[_activeTabIndex] : null;
+        if (tab == null || tab.HistoryUrls.Count == 0) return;
+
+        var menu = new ContextMenu();
+        for (int i = tab.HistoryIndex - 1; i >= 0; i--)
+        {
+            var steps = tab.HistoryIndex - i;
+            var url = tab.HistoryUrls[i];
+            var item = new MenuItem { Header = TruncateTitle(url, 60) };
+            item.Click += (_, _) => ActiveWebView?.GoBack(steps);
+            menu.Items.Add(item);
+        }
+
+        if (menu.Items.Count > 0)
+        {
+            menu.PlacementTarget = BackButton;
+            menu.Open(BackButton);
+        }
+    }
+
+    private void OnForwardButtonPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(ForwardButton).Properties.IsRightButtonPressed) return;
+        e.Handled = true;
+        var tab = _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count ? _tabs[_activeTabIndex] : null;
+        if (tab == null || tab.HistoryUrls.Count == 0) return;
+
+        var menu = new ContextMenu();
+        // Forward history: entries after current index
+        for (int i = tab.HistoryIndex + 1; i < tab.HistoryUrls.Count; i++)
+        {
+            var steps = i - tab.HistoryIndex;
+            var url = tab.HistoryUrls[i];
+            var item = new MenuItem { Header = TruncateTitle(url, 60) };
+            item.Click += (_, _) => ActiveWebView?.GoForward(steps);
+            menu.Items.Add(item);
+        }
+
+        if (menu.Items.Count > 0)
+        {
+            menu.PlacementTarget = ForwardButton;
+            menu.Open(ForwardButton);
+        }
+    }
+
     private static string TruncateTitle(string? title, int maxLength)
     {
         if (string.IsNullOrEmpty(title)) return "New Tab";
@@ -380,5 +437,7 @@ public partial class MainWindow : Window
         public required ServoWebViewControl WebView { get; init; }
         public string Title { get; set; } = "New Tab";
         public string? Url { get; set; }
+        public IReadOnlyList<string> HistoryUrls { get; set; } = [];
+        public int HistoryIndex { get; set; }
     }
 }

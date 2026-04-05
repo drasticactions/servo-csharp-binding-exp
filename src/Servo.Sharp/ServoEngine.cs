@@ -165,6 +165,31 @@ public sealed class ServoEngine : IDisposable
         ServoNative.servo_clear_cache((void*)_handle);
     }
 
+    public unsafe Task<string?> CreateMemoryReportAsync()
+    {
+        ThrowIfDisposed();
+        var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handle = GCHandle.Alloc(tcs);
+        ServoNative.servo_create_memory_report(
+            (void*)_handle,
+            &OnMemoryReportImpl,
+            (void*)GCHandle.ToIntPtr(handle));
+        return tcs.Task;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnMemoryReportImpl(void* ud, byte* json)
+    {
+        var handle = GCHandle.FromIntPtr((nint)ud);
+        var tcs = (TaskCompletionSource<string?>)handle.Target!;
+        handle.Free();
+
+        if (json == null)
+            tcs.SetResult(null);
+        else
+            tcs.SetResult(Marshal.PtrToStringUTF8((nint)json));
+    }
+
     internal nint Handle
     {
         get

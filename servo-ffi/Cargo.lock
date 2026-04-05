@@ -5594,6 +5594,8 @@ dependencies = [
  "raw-window-handle",
  "serde_json",
  "servo",
+ "servo-base",
+ "servo-profile-traits",
  "surfman",
  "url",
  "windows",
