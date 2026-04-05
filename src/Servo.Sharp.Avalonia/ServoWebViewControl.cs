@@ -3,6 +3,8 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.TextInput;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 
@@ -98,6 +100,7 @@ public class ServoWebViewControl : Control
     public event EventHandler<GamepadHapticEffectEventArgs>? GamepadHapticEffectRequested;
     public event EventHandler<FilePickerRequestEventArgs>? FilePickerRequested;
     public event EventHandler<ColorPickerRequestEventArgs>? ColorPickerRequested;
+    public event EventHandler<InputMethodEventArgs>? InputMethodRequested;
 
     private string? _pageTitle;
     private bool _isLoading;
@@ -116,6 +119,8 @@ public class ServoWebViewControl : Control
     private BluetoothDeviceOverlay? _activeBluetoothOverlay;
     private ContextMenu? _activeContextMenu;
     private ColorPickerOverlay? _activeColorPickerOverlay;
+    private ServoTextInputMethodClient? _imeClient;
+    private bool _imeComposing;
 
     private bool HasModalOverlay =>
         _activeSelectOverlay != null ||
@@ -125,6 +130,16 @@ public class ServoWebViewControl : Control
         _activeColorPickerOverlay != null ||
         _activeContextMenu != null;
 
+    static ServoWebViewControl()
+    {
+        TextInputMethodClientRequestedEvent.AddClassHandler<ServoWebViewControl>(
+            (control, e) =>
+            {
+                control._imeClient ??= new ServoTextInputMethodClient(control);
+                e.Client = control._imeClient;
+            });
+    }
+
     public ServoWebViewControl()
     {
         Focusable = true;
@@ -132,11 +147,6 @@ public class ServoWebViewControl : Control
 
     public ServoRenderingBackend RenderingBackend { get; set; } = ServoRenderingBackend.Hardware;
 
-    /// <summary>
-    /// If set before the control is attached to the visual tree, this request handle
-    /// will be used to build the WebView (via create_new_webview_build) instead of
-    /// creating a fresh one. The handle is consumed during initialization.
-    /// </summary>
     public nuint? PendingCreateNewWebViewRequest { get; set; }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -155,6 +165,9 @@ public class ServoWebViewControl : Control
         if (_topLevel != null)
             _topLevel.ScalingChanged += OnScalingChanged;
 
+        ActualThemeVariantChanged += OnThemeVariantChanged;
+        AddHandler(PointerTouchPadGestureMagnifyEvent, OnTouchPadMagnify);
+
         Dispatcher.UIThread.Post(InitializeServo, DispatcherPriority.Loaded);
     }
 
@@ -165,6 +178,9 @@ public class ServoWebViewControl : Control
             _topLevel.ScalingChanged -= OnScalingChanged;
             _topLevel = null;
         }
+
+        ActualThemeVariantChanged -= OnThemeVariantChanged;
+        RemoveHandler(PointerTouchPadGestureMagnifyEvent, OnTouchPadMagnify);
 
         Cleanup();
         base.OnDetachedFromVisualTree(e);
@@ -211,6 +227,14 @@ public class ServoWebViewControl : Control
 
     public ServoWebView? WebView => _webView;
 
+    public void NotifyThemeChange(ServoTheme theme) => _webView?.NotifyThemeChange(theme);
+
+    public void NotifyMediaSessionAction(MediaSessionAction action) =>
+        _webView?.NotifyMediaSessionAction(action);
+
+    public void AdjustPinchZoom(float delta, float centerX, float centerY) =>
+        _webView?.AdjustPinchZoom(delta, centerX, centerY);
+
     private void InitializeServo()
     {
         if (_webView != null) return; // already initialized
@@ -238,6 +262,7 @@ public class ServoWebViewControl : Control
 
         _surface!.SetRenderingContext(_renderingContext);
         _webView.SetHidpiScale((float)scaling);
+        _webView.NotifyThemeChange(GetServoTheme());
 
         _webView.NewFrameReady += OnNewFrameReady;
         _webView.LoadStatusChanged += (_, e) => Dispatcher.UIThread.Post(() =>
@@ -468,6 +493,21 @@ public class ServoWebViewControl : Control
             });
         };
 
+        _webView.InputMethodRequested += (_, e) =>
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                var s = GetScaling();
+                _imeClient?.UpdateCursorRect(
+                    e.PositionX,
+                    e.PositionY,
+                    e.PositionWidth,
+                    e.PositionHeight);
+
+                InputMethodRequested?.Invoke(this, e);
+            });
+        };
+
         _webView.Show();
         _webView.Focus();
     }
@@ -497,6 +537,30 @@ public class ServoWebViewControl : Control
     }
 
     private void OnScalingChanged(object? sender, EventArgs e) => ResizeServo();
+
+    private void OnThemeVariantChanged(object? sender, EventArgs e)
+    {
+        _webView?.NotifyThemeChange(GetServoTheme());
+    }
+
+    private ServoTheme GetServoTheme() =>
+        ActualThemeVariant == ThemeVariant.Dark ? ServoTheme.Dark : ServoTheme.Light;
+
+    private void OnTouchPadMagnify(object? sender, PointerDeltaEventArgs e)
+    {
+        if (_webView == null || HasModalOverlay) return;
+        var pos = e.GetPosition(this);
+        var s = GetScaling();
+        // Delta.X contains the magnification delta (e.g. 0.02 for 2% zoom in)
+        var delta = 1.0f + (float)e.Delta.X;
+        _webView.AdjustPinchZoom(delta, (float)(pos.X * s), (float)(pos.Y * s));
+        (Engine ?? ServoLocator.Engine).SpinEventLoop();
+    }
+
+    internal void NotifyImeComposing(bool composing)
+    {
+        _imeComposing = composing;
+    }
 
     private void ResizeServo()
     {
@@ -614,10 +678,19 @@ public class ServoWebViewControl : Control
     {
         base.OnTextInput(e);
         if (_webView == null || HasModalOverlay || string.IsNullOrEmpty(e.Text)) return;
-        foreach (var ch in e.Text)
+
+        if (_imeComposing)
         {
-            _webView.SendKeyEvent(down: true, keyChar: ch, keyCode: null);
-            _webView.SendKeyEvent(down: false, keyChar: ch, keyCode: null);
+            _imeClient?.NotifyCompositionEnd(e.Text);
+            _imeComposing = false;
+        }
+        else
+        {
+            foreach (var ch in e.Text)
+            {
+                _webView.SendKeyEvent(down: true, keyChar: ch, keyCode: null);
+                _webView.SendKeyEvent(down: false, keyChar: ch, keyCode: null);
+            }
         }
     }
 

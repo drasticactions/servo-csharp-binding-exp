@@ -319,6 +319,28 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "color_picker_dismiss", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void color_picker_dismiss(nuint handle);
 
+        /// <summary>
+        ///  Notify the webview of a theme change (Light/Dark).
+        ///  theme: 0 = Light, 1 = Dark
+        /// </summary>
+        [DllImport(__DllName, EntryPoint = "webview_notify_theme_change", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void webview_notify_theme_change(void* handle, byte theme);
+
+        [DllImport(__DllName, EntryPoint = "webview_notify_media_session_action", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void webview_notify_media_session_action(void* handle, byte action);
+
+        [DllImport(__DllName, EntryPoint = "webview_adjust_pinch_zoom", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void webview_adjust_pinch_zoom(void* handle, float delta, float center_x, float center_y);
+
+        [DllImport(__DllName, EntryPoint = "webview_get_pinch_zoom", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern float webview_get_pinch_zoom(void* handle);
+
+        [DllImport(__DllName, EntryPoint = "webview_send_ime_composition", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void webview_send_ime_composition(void* handle, byte state, byte* data);
+
+        [DllImport(__DllName, EntryPoint = "webview_send_ime_dismissed", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void webview_send_ime_dismissed(void* handle);
+
 
     }
 
@@ -383,6 +405,7 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, CScreenGeometry*, byte> get_screen_geometry;
         public delegate* unmanaged[Cdecl]<void*, byte*, byte, byte*, nuint, void> on_show_file_picker;
         public delegate* unmanaged[Cdecl]<void*, byte, byte, byte, byte, int, int, int, int, nuint, void> on_show_color_picker;
+        public delegate* unmanaged[Cdecl]<void*, byte, byte*, long, byte, byte, int, int, int, int, void> on_show_input_method;
     }
 
     [StructLayout(LayoutKind.Sequential)]

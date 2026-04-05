@@ -23,6 +23,8 @@ use servo::{
     SelectElement, ContextMenu, ContextMenuAction,
     UserContentManager, UserScript, NetworkManager, SiteDataManager, StorageType,
     SiteData, CacheEntry, ColorPicker, FilePicker, RgbColor,
+    Theme, MediaSessionActionType, InputMethodControl, InputMethodType,
+    CompositionEvent, CompositionState, ImeEvent,
 };
 use servo::EmbedderControlId;
 use servo::user_contents::UserStyleSheet;
@@ -794,7 +796,35 @@ impl WebViewDelegate for FfiWebViewDelegate {
                 }
                 // If no callback, ColorPicker drops → sends current color via Drop impl.
             },
-            _ => {}, // InputMethod not yet handled.
+            EmbedderControl::InputMethod(ime) => {
+                if let Some(cb) = self.callbacks.on_show_input_method {
+                    let ime_type = match ime.input_method_type() {
+                        InputMethodType::Color => 0u8,
+                        InputMethodType::Date => 1,
+                        InputMethodType::DatetimeLocal => 2,
+                        InputMethodType::Email => 3,
+                        InputMethodType::Month => 4,
+                        InputMethodType::Number => 5,
+                        InputMethodType::Password => 6,
+                        InputMethodType::Search => 7,
+                        InputMethodType::Tel => 8,
+                        InputMethodType::Text => 9,
+                        InputMethodType::Time => 10,
+                        InputMethodType::Url => 11,
+                        InputMethodType::Week => 12,
+                    };
+                    let insertion = ime.insertion_point().map(|p| p as i64).unwrap_or(-1);
+                    let pos = ime.position();
+                    let multiline = ime.multiline() as u8;
+                    let vk = ime.allow_virtual_keyboard() as u8;
+                    if let Ok(text) = CString::new(ime.text()) {
+                        cb(self.ud(), ime_type, text.as_ptr(), insertion, multiline, vk,
+                           pos.min.x, pos.min.y, pos.size().width, pos.size().height);
+                    }
+                }
+                // InputMethodControl has no response — text input is handled via keyboard events.
+                // Drop sends no response.
+            },
         }
     }
 
@@ -2045,4 +2075,79 @@ pub extern "C" fn color_picker_dismiss(handle: usize) {
     if handle == 0 { return; }
     // Drop sends current color via Drop impl
     let _ = unsafe { Box::from_raw(handle as *mut ColorPicker) };
+}
+
+// ── Theme Changes ───────────────────────────────────────────────────────
+
+/// Notify the webview of a theme change (Light/Dark).
+/// theme: 0 = Light, 1 = Dark
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_notify_theme_change(handle: *mut c_void, theme: u8) {
+    if let Some(wv) = wv_ref(handle) {
+        let t = match theme {
+            1 => Theme::Dark,
+            _ => Theme::Light,
+        };
+        wv.webview.notify_theme_change(t);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_notify_media_session_action(handle: *mut c_void, action: u8) {
+    if let Some(wv) = wv_ref(handle) {
+        let action_type = match action {
+            0 => MediaSessionActionType::Play,
+            1 => MediaSessionActionType::Pause,
+            2 => MediaSessionActionType::SeekBackward,
+            3 => MediaSessionActionType::SeekForward,
+            4 => MediaSessionActionType::PreviousTrack,
+            5 => MediaSessionActionType::NextTrack,
+            6 => MediaSessionActionType::SkipAd,
+            7 => MediaSessionActionType::Stop,
+            8 => MediaSessionActionType::SeekTo,
+            _ => return,
+        };
+        wv.webview.notify_media_session_action_event(action_type);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_adjust_pinch_zoom(
+    handle: *mut c_void, delta: f32, center_x: f32, center_y: f32,
+) {
+    if let Some(wv) = wv_ref(handle) {
+        wv.webview.adjust_pinch_zoom(delta, DevicePoint::new(center_x, center_y));
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_get_pinch_zoom(handle: *mut c_void) -> f32 {
+    wv_ref(handle).map(|wv| wv.webview.pinch_zoom()).unwrap_or(1.0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_send_ime_composition(
+    handle: *mut c_void, state: u8, data: *const c_char,
+) {
+    let Some(wv) = wv_ref(handle) else { return; };
+    let data_str = if data.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(data) }.to_str().unwrap_or_default().to_string()
+    };
+    let comp_state = match state {
+        0 => CompositionState::Start,
+        1 => CompositionState::Update,
+        _ => CompositionState::End,
+    };
+    wv.webview.notify_input_event(InputEvent::Ime(ImeEvent::Composition(
+        CompositionEvent { state: comp_state, data: data_str },
+    )));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_send_ime_dismissed(handle: *mut c_void) {
+    if let Some(wv) = wv_ref(handle) {
+        wv.webview.notify_input_event(InputEvent::Ime(ImeEvent::Dismissed));
+    }
 }

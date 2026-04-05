@@ -46,6 +46,7 @@ public sealed class ServoWebView : IDisposable
     public event EventHandler<GamepadHapticEffectEventArgs>? GamepadHapticEffectRequested;
     public event EventHandler<FilePickerRequestEventArgs>? FilePickerRequested;
     public event EventHandler<ColorPickerRequestEventArgs>? ColorPickerRequested;
+    public event EventHandler<InputMethodEventArgs>? InputMethodRequested;
 
     public unsafe ServoWebView(ServoEngine engine, RenderingContext renderingContext, string? initialUrl = null)
         : this(engine, renderingContext.Handle, initialUrl) { }
@@ -143,6 +144,7 @@ public sealed class ServoWebView : IDisposable
             on_gamepad_haptic_effect = &OnGamepadHapticEffectImpl,
             on_show_file_picker = &OnShowFilePickerImpl,
             on_show_color_picker = &OnShowColorPickerImpl,
+            on_show_input_method = &OnShowInputMethodImpl,
         };
     }
 
@@ -448,6 +450,47 @@ public sealed class ServoWebView : IDisposable
     {
         ThrowIfDisposed();
         ServoNative.webview_exit_fullscreen((void*)_handle);
+    }
+
+    public unsafe void NotifyThemeChange(ServoTheme theme)
+    {
+        ThrowIfDisposed();
+        ServoNative.webview_notify_theme_change((void*)_handle, (byte)theme);
+    }
+
+    public unsafe void NotifyMediaSessionAction(MediaSessionAction action)
+    {
+        ThrowIfDisposed();
+        ServoNative.webview_notify_media_session_action((void*)_handle, (byte)action);
+    }
+
+    public unsafe void AdjustPinchZoom(float delta, float centerX, float centerY)
+    {
+        ThrowIfDisposed();
+        ServoNative.webview_adjust_pinch_zoom((void*)_handle, delta, centerX, centerY);
+    }
+
+    public unsafe float PinchZoom
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return ServoNative.webview_get_pinch_zoom((void*)_handle);
+        }
+    }
+
+    public unsafe void SendImeComposition(CompositionState state, string data)
+    {
+        ThrowIfDisposed();
+        var pData = Marshal.StringToCoTaskMemUTF8(data);
+        try { ServoNative.webview_send_ime_composition((void*)_handle, (byte)state, (byte*)pData); }
+        finally { Marshal.FreeCoTaskMem(pData); }
+    }
+
+    public unsafe void SendImeDismissed()
+    {
+        ThrowIfDisposed();
+        ServoNative.webview_send_ime_dismissed((void*)_handle);
     }
 
     public unsafe void SetThrottled(bool throttled)
@@ -793,5 +836,20 @@ public sealed class ServoWebView : IDisposable
             handler.Invoke(w, args);
         else
             args.Dismiss(); // no handler, dismiss (sends current color)
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnShowInputMethodImpl(void* ud, byte imeType, byte* text,
+        long insertionPoint, byte multiline, byte allowVirtualKeyboard,
+        int posX, int posY, int posW, int posH)
+    {
+        if (!TryGet(ud, out var w)) return;
+        var t = Marshal.PtrToStringUTF8((nint)text) ?? "";
+        int? ip = insertionPoint >= 0 ? (int)insertionPoint : null;
+        var args = new InputMethodEventArgs(
+            (InputMethodType)imeType, t, ip,
+            multiline != 0, allowVirtualKeyboard != 0,
+            posX, posY, posW, posH);
+        w.InputMethodRequested?.Invoke(w, args);
     }
 }

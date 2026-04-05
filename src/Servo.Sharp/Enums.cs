@@ -132,6 +132,49 @@ public enum PermissionFeature : byte
     Microphone = 3,
 }
 
+public enum ServoTheme : byte
+{
+    Light = 0,
+    Dark = 1,
+}
+
+public enum MediaSessionAction : byte
+{
+    Play = 0,
+    Pause = 1,
+    SeekBackward = 2,
+    SeekForward = 3,
+    PreviousTrack = 4,
+    NextTrack = 5,
+    SkipAd = 6,
+    Stop = 7,
+    SeekTo = 8,
+}
+
+public enum InputMethodType : byte
+{
+    Color = 0,
+    Date = 1,
+    DatetimeLocal = 2,
+    Email = 3,
+    Month = 4,
+    Number = 5,
+    Password = 6,
+    Search = 7,
+    Tel = 8,
+    Text = 9,
+    Time = 10,
+    Url = 11,
+    Week = 12,
+}
+
+public enum CompositionState : byte
+{
+    Start = 0,
+    Update = 1,
+    End = 2,
+}
+
 [Flags]
 public enum StorageTypes : byte
 {
