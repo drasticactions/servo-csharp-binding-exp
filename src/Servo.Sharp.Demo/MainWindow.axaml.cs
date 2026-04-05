@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private readonly List<TabInfo> _tabs = new();
     private int _activeTabIndex = -1;
     private bool _isDraggingTab;
+    private bool _experimentalFeaturesEnabled;
 
     private const string NewTabUrl = "servo:newtab";
 
@@ -34,6 +35,7 @@ public partial class MainWindow : Window
         UrlBar.KeyDown += (_, e) => { if (e.Key == Key.Enter) NavigateToUrlBar(); };
         NewTabButton.Click += (_, _) => AddTab(NewTabUrl);
         NewWindowButton.Click += (_, _) => OpenNewWindow();
+        ExperimentalButton.Click += (_, _) => ToggleExperimentalFeatures();
 
         TabStrip.AddHandler(DragTabItem.TabClickedEvent, OnTabClicked);
         TabStrip.AddHandler(DragTabItem.DragStartedEvent, (_, _) => _isDraggingTab = true, handledEventsToo: true);
@@ -121,6 +123,26 @@ public partial class MainWindow : Window
     {
         var window = new MainWindow(NewTabUrl);
         window.Show();
+    }
+
+    private void ToggleExperimentalFeatures()
+    {
+        _experimentalFeaturesEnabled = !_experimentalFeaturesEnabled;
+        var value = _experimentalFeaturesEnabled ? "true" : "false";
+
+        foreach (var pref in ServoProtocolHandler.ExperimentalPrefs)
+            ServoLocator.Engine.SetPreference(pref, value);
+
+        foreach (var tab in _tabs)
+            tab.WebView.Reload();
+
+        ExperimentalButton.Background = _experimentalFeaturesEnabled
+            ? Brushes.DodgerBlue
+            : null;
+
+        StatusText.Text = _experimentalFeaturesEnabled
+            ? "Experimental web platform features enabled"
+            : "Experimental web platform features disabled";
     }
 
     private void WireWebViewEvents(TabInfo tab)

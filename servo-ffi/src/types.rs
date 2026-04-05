@@ -131,6 +131,8 @@ pub struct CProtocolHandler {
     ) -> u8>,
     pub is_fetchable: u8,
     pub is_secure: u8,
+    pub privileged_paths: *const *const c_char,
+    pub privileged_paths_len: usize,
 }
 
 unsafe impl Send for CProtocolHandler {}

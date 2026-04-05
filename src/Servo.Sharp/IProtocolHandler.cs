@@ -7,4 +7,6 @@ public interface IProtocolHandler
     bool IsFetchable => false;
 
     bool IsSecure => false;
+
+    IReadOnlyList<string> PrivilegedPaths => [];
 }

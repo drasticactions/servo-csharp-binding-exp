@@ -30,25 +30,37 @@ public sealed class ProtocolRegistry : IDisposable
         var gcHandle = GCHandle.Alloc(handler);
         _handlerHandles.Add(gcHandle);
 
+        var paths = handler.PrivilegedPaths;
+        var pathPtrs = new nint[paths.Count];
+        for (int i = 0; i < paths.Count; i++)
+            pathPtrs[i] = Marshal.StringToCoTaskMemUTF8(paths[i]);
+
         var pScheme = Marshal.StringToCoTaskMemUTF8(scheme);
         try
         {
-            var native = new CProtocolHandler
+            fixed (nint* pPaths = pathPtrs)
             {
-                user_data = (void*)GCHandle.ToIntPtr(gcHandle),
-                load = &LoadCallbackImpl,
-                is_fetchable = (byte)(handler.IsFetchable ? 1 : 0),
-                is_secure = (byte)(handler.IsSecure ? 1 : 0),
-            };
-            var result = ServoNative.servo_protocol_registry_register(
-                (void*)_handle, (byte*)pScheme, native);
-            if (result != 0)
-                throw new ArgumentException($"Failed to register scheme '{scheme}' (error code {result}).");
-            _registeredSchemes.Add(scheme);
+                var native = new CProtocolHandler
+                {
+                    user_data = (void*)GCHandle.ToIntPtr(gcHandle),
+                    load = &LoadCallbackImpl,
+                    is_fetchable = (byte)(handler.IsFetchable ? 1 : 0),
+                    is_secure = (byte)(handler.IsSecure ? 1 : 0),
+                    privileged_paths = (byte**)pPaths,
+                    privileged_paths_len = (nuint)paths.Count,
+                };
+                var result = ServoNative.servo_protocol_registry_register(
+                    (void*)_handle, (byte*)pScheme, native);
+                if (result != 0)
+                    throw new ArgumentException($"Failed to register scheme '{scheme}' (error code {result}).");
+                _registeredSchemes.Add(scheme);
+            }
         }
         finally
         {
             Marshal.FreeCoTaskMem(pScheme);
+            foreach (var ptr in pathPtrs)
+                Marshal.FreeCoTaskMem(ptr);
         }
     }
 

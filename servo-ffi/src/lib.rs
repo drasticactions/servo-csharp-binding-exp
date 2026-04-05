@@ -106,9 +106,14 @@ pub extern "C" fn servo_free_bytes(ptr: *mut u8, len: usize) {
 
 struct FfiProtocolHandler {
     callbacks: CProtocolHandler,
+    privileged: &'static [&'static str],
 }
 
 impl ProtocolHandler for FfiProtocolHandler {
+    fn privileged_paths(&self) -> &'static [&'static str] {
+        self.privileged
+    }
+
     fn load<'a>(
         &'a self,
         request: &'a mut NetRequest,
@@ -200,7 +205,19 @@ pub extern "C" fn servo_protocol_registry_register(
         Ok(s) => s,
         Err(_) => return 3,
     };
-    let ffi_handler = FfiProtocolHandler { callbacks: handler };
+    let mut privileged_strs = Vec::new();
+    if !handler.privileged_paths.is_null() && handler.privileged_paths_len > 0 {
+        let ptrs = unsafe {
+            std::slice::from_raw_parts(handler.privileged_paths, handler.privileged_paths_len)
+        };
+        for &ptr in ptrs {
+            if let Ok(s) = unsafe { CStr::from_ptr(ptr) }.to_str() {
+                privileged_strs.push(Box::leak(s.to_string().into_boxed_str()) as &'static str);
+            }
+        }
+    }
+    let privileged: &'static [&'static str] = Box::leak(privileged_strs.into_boxed_slice());
+    let ffi_handler = FfiProtocolHandler { callbacks: handler, privileged };
     match registry.register(scheme_str, ffi_handler) {
         Ok(()) => 0,
         Err(_) => {

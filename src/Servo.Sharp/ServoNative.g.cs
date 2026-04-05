@@ -351,6 +351,8 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<byte*, void*, CProtocolResponse*, byte> load;
         public byte is_fetchable;
         public byte is_secure;
+        public byte** privileged_paths;
+        public nuint privileged_paths_len;
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using Servo.Sharp;
 using Servo.Sharp.Protocols;
@@ -6,7 +7,7 @@ namespace Servo.Sharp.Demo;
 
 public class ServoProtocolHandler : IProtocolHandler
 {
-    private static readonly string[] ExperimentalPrefs =
+    public static readonly string[] ExperimentalPrefs =
     [
         "dom_async_clipboard_enabled",
         "dom_exec_command_enabled",
@@ -35,6 +36,8 @@ public class ServoProtocolHandler : IProtocolHandler
     }
 
     public bool IsFetchable => true;
+
+    public IReadOnlyList<string> PrivilegedPaths => ["config", "preferences"];
 
     public ProtocolResponse? Load(string url)
     {
