@@ -28,6 +28,7 @@ public sealed class ServoEngine : IDisposable
     private nint _handle;
     private GCHandle _wakerHandle;
     private GCHandle _delegateHandle;
+    private ProtocolRegistry? _protocolRegistry;
     private bool _disposed;
 
     public Action? EventLoopWaker { get; set; }
@@ -41,8 +42,9 @@ public sealed class ServoEngine : IDisposable
     public event EventHandler<WebResourceLoadEventArgs>? WebResourceLoadRequested;
     public event EventHandler<NotificationEventArgs>? NotificationRequested;
 
-    public unsafe ServoEngine(string? resourcePath = null)
+    public unsafe ServoEngine(string? resourcePath = null, ProtocolRegistry? protocolRegistry = null)
     {
+        _protocolRegistry = protocolRegistry;
         _wakerHandle = GCHandle.Alloc(this);
 
         var waker = new CEventLoopWaker
@@ -51,15 +53,17 @@ public sealed class ServoEngine : IDisposable
             wake = &WakeCallbackImpl,
         };
 
+        var registryPtr = protocolRegistry?.ConsumeHandle() ?? 0;
+
         if (resourcePath != null)
         {
             var pResource = Marshal.StringToCoTaskMemUTF8(resourcePath);
-            try { _handle = (nint)ServoNative.servo_new(waker, (byte*)pResource); }
+            try { _handle = (nint)ServoNative.servo_new(waker, (byte*)pResource, (void*)registryPtr); }
             finally { Marshal.FreeCoTaskMem(pResource); }
         }
         else
         {
-            _handle = (nint)ServoNative.servo_new(waker, null);
+            _handle = (nint)ServoNative.servo_new(waker, null, (void*)registryPtr);
         }
 
         if (_handle == 0)
@@ -104,6 +108,9 @@ public sealed class ServoEngine : IDisposable
         }
     }
 
+    public IReadOnlyCollection<string> RegisteredSchemes =>
+        _protocolRegistry?.RegisteredSchemes ?? Array.Empty<string>();
+
     internal nint Handle
     {
         get
@@ -122,6 +129,8 @@ public sealed class ServoEngine : IDisposable
             ServoNative.servo_destroy((void*)_handle);
             _handle = 0;
         }
+        _protocolRegistry?.Dispose();
+        _protocolRegistry = null;
         if (_wakerHandle.IsAllocated) _wakerHandle.Free();
         if (_delegateHandle.IsAllocated) _delegateHandle.Free();
     }

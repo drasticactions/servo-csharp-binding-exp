@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -19,7 +20,9 @@ public partial class MainWindow : Window
     private int _activeTabIndex = -1;
     private bool _isDraggingTab;
 
-    public MainWindow() : this("https://servo.org") { }
+    private const string NewTabUrl = "servo:newtab";
+
+    public MainWindow() : this(NewTabUrl) { }
 
     public MainWindow(string? initialUrl)
     {
@@ -29,7 +32,7 @@ public partial class MainWindow : Window
         ForwardButton.Click += (_, _) => ActiveWebView?.GoForward();
         ReloadButton.Click += (_, _) => ActiveWebView?.Reload();
         UrlBar.KeyDown += (_, e) => { if (e.Key == Key.Enter) NavigateToUrlBar(); };
-        NewTabButton.Click += (_, _) => AddTab("https://servo.org");
+        NewTabButton.Click += (_, _) => AddTab(NewTabUrl);
         NewWindowButton.Click += (_, _) => OpenNewWindow();
 
         TabStrip.AddHandler(DragTabItem.TabClickedEvent, OnTabClicked);
@@ -37,7 +40,7 @@ public partial class MainWindow : Window
         TabStrip.AddHandler(DragTabItem.DragCompletedEvent, (_, _) => _isDraggingTab = false, handledEventsToo: true);
         TabStrip.TabReordered += OnTabReordered;
 
-        AddTab(initialUrl ?? "https://servo.org");
+        AddTab(initialUrl ?? NewTabUrl);
     }
 
     private ServoWebViewControl? ActiveWebView => _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
@@ -116,7 +119,7 @@ public partial class MainWindow : Window
 
     private void OpenNewWindow()
     {
-        var window = new MainWindow("https://servo.org");
+        var window = new MainWindow(NewTabUrl);
         window.Show();
     }
 
@@ -223,7 +226,7 @@ public partial class MainWindow : Window
     {
         var url = UrlBar.Text;
         if (string.IsNullOrWhiteSpace(url)) return;
-        if (!url.Contains("://") && !url.StartsWith("data:")) url = "https://" + url;
+        if (!url.Contains("://") && !url.StartsWith("data:") && !HasRegisteredScheme(url)) url = "https://" + url;
         ActiveWebView?.Navigate(url);
         ActiveWebView?.Focus();
     }
@@ -334,6 +337,14 @@ public partial class MainWindow : Window
 
             TabStrip.Children.Add(tabItem);
         }
+    }
+
+    private static bool HasRegisteredScheme(string url)
+    {
+        var colonIndex = url.IndexOf(':');
+        if (colonIndex <= 0) return false;
+        var scheme = url[..colonIndex];
+        return ServoLocator.Engine.RegisteredSchemes.Contains(scheme);
     }
 
     private static string TruncateTitle(string? title, int maxLength)

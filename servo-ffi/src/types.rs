@@ -114,6 +114,29 @@ unsafe impl Send for ClipboardCallbacks {}
 unsafe impl Sync for ClipboardCallbacks {}
 
 #[repr(C)]
+pub struct CProtocolResponse {
+    pub body: *const u8,
+    pub body_len: usize,
+    pub content_type: *const c_char,
+    pub status_code: u16,
+}
+
+#[repr(C)]
+pub struct CProtocolHandler {
+    pub user_data: *mut c_void,
+    pub load: Option<extern "C" fn(
+        url: *const c_char,
+        user_data: *mut c_void,
+        response: *mut CProtocolResponse,
+    ) -> u8>,
+    pub is_fetchable: u8,
+    pub is_secure: u8,
+}
+
+unsafe impl Send for CProtocolHandler {}
+unsafe impl Sync for CProtocolHandler {}
+
+#[repr(C)]
 #[derive(Default)]
 pub struct CScreenGeometry {
     pub size_width: i32,

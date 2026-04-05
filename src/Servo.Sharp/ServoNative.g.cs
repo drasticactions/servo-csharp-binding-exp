@@ -27,8 +27,17 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "servo_free_bytes", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void servo_free_bytes(byte* ptr, nuint len);
 
+        [DllImport(__DllName, EntryPoint = "servo_protocol_registry_new", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void* servo_protocol_registry_new();
+
+        [DllImport(__DllName, EntryPoint = "servo_protocol_registry_register", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern byte servo_protocol_registry_register(void* registry, byte* scheme, CProtocolHandler handler);
+
+        [DllImport(__DllName, EntryPoint = "servo_protocol_registry_destroy", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void servo_protocol_registry_destroy(void* registry);
+
         [DllImport(__DllName, EntryPoint = "servo_new", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern void* servo_new(CEventLoopWaker waker, byte* resource_path);
+        internal static extern void* servo_new(CEventLoopWaker waker, byte* resource_path, void* protocol_registry);
 
         [DllImport(__DllName, EntryPoint = "servo_destroy", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void servo_destroy(void* handle);
@@ -324,6 +333,24 @@ namespace Servo.Sharp
         public delegate* unmanaged[Cdecl]<void*, byte*> get_text;
         public delegate* unmanaged[Cdecl]<void*, byte*, void> set_text;
         public delegate* unmanaged[Cdecl]<void*, void> clear;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe partial struct CProtocolResponse
+    {
+        public byte* body;
+        public nuint body_len;
+        public byte* content_type;
+        public ushort status_code;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe partial struct CProtocolHandler
+    {
+        public void* user_data;
+        public delegate* unmanaged[Cdecl]<byte*, void*, CProtocolResponse*, byte> load;
+        public byte is_fetchable;
+        public byte is_secure;
     }
 
     [StructLayout(LayoutKind.Sequential)]

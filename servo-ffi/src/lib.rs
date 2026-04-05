@@ -6,7 +6,9 @@ mod types;
 mod waker;
 
 use std::ffi::{CStr, CString, c_char, c_void};
+use std::future;
 use std::panic;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::cell::RefCell;
 
@@ -25,6 +27,11 @@ use servo::{WebResourceLoad, WebResourceResponse};
 use servo::{Notification, RegisterOrUnregister, TraversalId, BluetoothDeviceSelectionRequest};
 use servo::{GamepadDelegate, GamepadHapticEffectRequest, GamepadHapticEffectRequestType};
 use servo::protocol_handler::ProtocolHandlerRegistration;
+use servo::protocol_handler::{
+    ProtocolHandler, ProtocolRegistry, Request as NetRequest,
+    Response as NetResponse, ResponseBody, ResourceFetchTiming,
+    DoneChannel, FetchContext, NetworkError,
+};
 use servo::SelectElementOptionOrOptgroup;
 use servo::ContextMenuItem;
 use servo::input_events::{
@@ -97,10 +104,126 @@ pub extern "C" fn servo_free_bytes(ptr: *mut u8, len: usize) {
     }
 }
 
+struct FfiProtocolHandler {
+    callbacks: CProtocolHandler,
+}
+
+impl ProtocolHandler for FfiProtocolHandler {
+    fn load<'a>(
+        &'a self,
+        request: &'a mut NetRequest,
+        _done_chan: &mut DoneChannel,
+        _context: &FetchContext,
+    ) -> Pin<Box<dyn std::future::Future<Output = NetResponse> + Send + 'a>> {
+        let url = request.current_url();
+        let url_str = match CString::new(url.as_str()) {
+            Ok(s) => s,
+            Err(_) => {
+                return Box::pin(future::ready(NetResponse::network_error(
+                    NetworkError::ResourceLoadError("Invalid URL".into()),
+                )));
+            }
+        };
+
+        let load_fn = match self.callbacks.load {
+            Some(f) => f,
+            None => {
+                return Box::pin(future::ready(NetResponse::network_error(
+                    NetworkError::ResourceLoadError("No load callback".into()),
+                )));
+            }
+        };
+
+        let mut c_response = CProtocolResponse {
+            body: std::ptr::null(),
+            body_len: 0,
+            content_type: std::ptr::null(),
+            status_code: 200,
+        };
+
+        let ok = load_fn(url_str.as_ptr(), self.callbacks.user_data, &mut c_response);
+        if ok == 0 || c_response.body.is_null() {
+            return Box::pin(future::ready(NetResponse::network_error(
+                NetworkError::ResourceLoadError("Protocol handler returned error".into()),
+            )));
+        }
+
+        // Copy data from C# pointers before they become invalid
+        let body = unsafe { std::slice::from_raw_parts(c_response.body, c_response.body_len) }.to_vec();
+        let content_type = if !c_response.content_type.is_null() {
+            unsafe { CStr::from_ptr(c_response.content_type) }
+                .to_str()
+                .unwrap_or("application/octet-stream")
+                .to_string()
+        } else {
+            "application/octet-stream".to_string()
+        };
+
+        let mut response = NetResponse::new(
+            url,
+            ResourceFetchTiming::new(request.timing_type()),
+        );
+        *response.body.lock() = ResponseBody::Done(body);
+        if let Ok(val) = http::HeaderValue::from_str(&content_type) {
+            response.headers.insert(http::header::CONTENT_TYPE, val);
+        }
+        response.status = http::StatusCode::from_u16(c_response.status_code)
+            .unwrap_or(http::StatusCode::OK)
+            .into();
+
+        Box::pin(future::ready(response))
+    }
+
+    fn is_fetchable(&self) -> bool {
+        self.callbacks.is_fetchable != 0
+    }
+
+    fn is_secure(&self) -> bool {
+        self.callbacks.is_secure != 0
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_protocol_registry_new() -> *mut c_void {
+    Box::into_raw(Box::new(ProtocolRegistry::default())) as *mut c_void
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_protocol_registry_register(
+    registry: *mut c_void,
+    scheme: *const c_char,
+    handler: CProtocolHandler,
+) -> u8 {
+    if registry.is_null() || scheme.is_null() { return 3; }
+    let registry = unsafe { &mut *(registry as *mut ProtocolRegistry) };
+    let scheme_str = match unsafe { CStr::from_ptr(scheme) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return 3,
+    };
+    let ffi_handler = FfiProtocolHandler { callbacks: handler };
+    match registry.register(scheme_str, ffi_handler) {
+        Ok(()) => 0,
+        Err(_) => {
+            // 1 = forbidden scheme, 2 = already registered
+            // ProtocolRegisterError is not re-exported, so we can't distinguish here.
+            // The registry logs the specific error.
+            1
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_protocol_registry_destroy(registry: *mut c_void) {
+    if !registry.is_null() {
+        unsafe { drop(Box::from_raw(registry as *mut ProtocolRegistry)); }
+    }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn servo_new(
     waker: CEventLoopWaker,
     resource_path: *const c_char,
+    protocol_registry: *mut c_void,
 ) -> *mut c_void {
     let result = ffi_catch(std::panic::AssertUnwindSafe(|| {
         if resource_path.is_null() {
@@ -113,9 +236,15 @@ pub extern "C" fn servo_new(
         };
 
         let ffi_waker = FfiEventLoopWaker::new(waker);
-        let servo = ServoBuilder::default()
-            .event_loop_waker(Box::new(ffi_waker))
-            .build();
+        let mut builder = ServoBuilder::default()
+            .event_loop_waker(Box::new(ffi_waker));
+
+        if !protocol_registry.is_null() {
+            let registry = unsafe { *Box::from_raw(protocol_registry as *mut ProtocolRegistry) };
+            builder = builder.protocol_registry(registry);
+        }
+
+        let servo = builder.build();
         servo.setup_logging();
 
         Box::into_raw(Box::new(servo)) as *mut c_void
