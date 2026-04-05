@@ -4,12 +4,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Servo.Sharp;
 using Servo.Sharp.Avalonia;
 
 namespace Servo.Sharp.Demo;
@@ -20,6 +22,7 @@ public partial class MainWindow : Window
     private int _activeTabIndex = -1;
     private bool _isDraggingTab;
     private bool _experimentalFeaturesEnabled;
+    private bool _profilerRunning;
 
     private const string NewTabUrl = "servo:newtab";
 
@@ -37,7 +40,7 @@ public partial class MainWindow : Window
         UrlBar.KeyDown += (_, e) => { if (e.Key == Key.Enter) NavigateToUrlBar(); };
         NewTabButton.Click += (_, _) => AddTab(NewTabUrl);
         NewWindowButton.Click += (_, _) => OpenNewWindow();
-        ExperimentalButton.Click += (_, _) => ToggleExperimentalFeatures();
+        SettingsButton.Click += (_, _) => ToggleSettingsPanel();
 
         TabStrip.AddHandler(DragTabItem.TabClickedEvent, OnTabClicked);
         TabStrip.AddHandler(DragTabItem.DragStartedEvent, (_, _) => _isDraggingTab = true, handledEventsToo: true);
@@ -127,9 +130,48 @@ public partial class MainWindow : Window
         window.Show();
     }
 
-    private void ToggleExperimentalFeatures()
+    private void ToggleSettingsPanel()
     {
-        _experimentalFeaturesEnabled = !_experimentalFeaturesEnabled;
+        var visible = !SettingsPanel.IsVisible;
+        SettingsPanel.IsVisible = visible;
+
+        if (visible)
+        {
+            ExperimentalFeaturesToggle.IsChecked = _experimentalFeaturesEnabled;
+            WireSettingsEvents();
+        }
+        else
+        {
+            UnwireSettingsEvents();
+        }
+    }
+
+    private void WireSettingsEvents()
+    {
+        ExperimentalFeaturesToggle.IsCheckedChanged += OnExperimentalToggled;
+        ProfilerToggle.IsCheckedChanged += OnProfilerToggled;
+        TextureCacheToggle.IsCheckedChanged += OnTextureCacheToggled;
+        RenderTargetToggle.IsCheckedChanged += OnRenderTargetToggled;
+        ToggleProfilerButton.Click += OnToggleSamplingProfiler;
+        CaptureButton.Click += OnCaptureWebRender;
+        MemoryReportButton.Click += OnMemoryReport;
+        CloseSettingsButton.Click += (_, _) => ToggleSettingsPanel();
+    }
+
+    private void UnwireSettingsEvents()
+    {
+        ExperimentalFeaturesToggle.IsCheckedChanged -= OnExperimentalToggled;
+        ProfilerToggle.IsCheckedChanged -= OnProfilerToggled;
+        TextureCacheToggle.IsCheckedChanged -= OnTextureCacheToggled;
+        RenderTargetToggle.IsCheckedChanged -= OnRenderTargetToggled;
+        ToggleProfilerButton.Click -= OnToggleSamplingProfiler;
+        CaptureButton.Click -= OnCaptureWebRender;
+        MemoryReportButton.Click -= OnMemoryReport;
+    }
+
+    private void OnExperimentalToggled(object? sender, RoutedEventArgs e)
+    {
+        _experimentalFeaturesEnabled = ExperimentalFeaturesToggle.IsChecked == true;
         var value = _experimentalFeaturesEnabled ? "true" : "false";
 
         foreach (var pref in ServoProtocolHandler.ExperimentalPrefs)
@@ -138,13 +180,74 @@ public partial class MainWindow : Window
         foreach (var tab in _tabs)
             tab.WebView.Reload();
 
-        ExperimentalButton.Background = _experimentalFeaturesEnabled
-            ? Brushes.DodgerBlue
-            : null;
-
         StatusText.Text = _experimentalFeaturesEnabled
             ? "Experimental web platform features enabled"
             : "Experimental web platform features disabled";
+    }
+
+    private void OnProfilerToggled(object? sender, RoutedEventArgs e) =>
+        ActiveWebView?.WebView?.ToggleWebRenderDebugging(WebRenderDebugOption.Profiler);
+
+    private void OnTextureCacheToggled(object? sender, RoutedEventArgs e) =>
+        ActiveWebView?.WebView?.ToggleWebRenderDebugging(WebRenderDebugOption.TextureCacheDebug);
+
+    private void OnRenderTargetToggled(object? sender, RoutedEventArgs e) =>
+        ActiveWebView?.WebView?.ToggleWebRenderDebugging(WebRenderDebugOption.RenderTargetDebug);
+
+    private void OnToggleSamplingProfiler(object? sender, RoutedEventArgs e)
+    {
+        var wv = ActiveWebView?.WebView;
+        if (wv == null) return;
+
+        wv.ToggleSamplingProfiler(
+            TimeSpan.FromMilliseconds((double)(ProfilerRate.Value ?? 1)),
+            TimeSpan.FromSeconds((double)(ProfilerDuration.Value ?? 5)));
+
+        _profilerRunning = !_profilerRunning;
+        ToggleProfilerButton.Content = _profilerRunning ? "Stop Profiler" : "Start Profiler";
+    }
+
+    private void OnCaptureWebRender(object? sender, RoutedEventArgs e) =>
+        ActiveWebView?.WebView?.CaptureWebRender();
+
+    private async void OnMemoryReport(object? sender, RoutedEventArgs e)
+    {
+        MemoryReportButton.IsEnabled = false;
+        MemoryReportButton.Content = "Generating...";
+        MemoryReportOutput.IsVisible = true;
+        MemoryReportOutput.Text = "Requesting memory report...";
+
+        try
+        {
+            var json = await ServoLocator.Engine.CreateMemoryReportAsync();
+            if (json == null)
+            {
+                MemoryReportOutput.Text = "Failed to generate memory report.";
+                return;
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                MemoryReportOutput.Text = JsonSerializer.Serialize(doc, new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                });
+            }
+            catch
+            {
+                MemoryReportOutput.Text = json;
+            }
+        }
+        catch (Exception ex)
+        {
+            MemoryReportOutput.Text = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            MemoryReportButton.IsEnabled = true;
+            MemoryReportButton.Content = "Generate Report";
+        }
     }
 
     private void WireWebViewEvents(TabInfo tab)

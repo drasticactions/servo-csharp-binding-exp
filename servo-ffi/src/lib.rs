@@ -25,6 +25,8 @@ use servo::{
     SiteData, CacheEntry, ColorPicker, FilePicker, RgbColor,
     Theme, MediaSessionActionType, InputMethodControl, InputMethodType,
     CompositionEvent, CompositionState, ImeEvent,
+    WebRenderDebugOption,
+    MediaGlApi, MediaGlContext, MediaNativeDisplay,
 };
 use servo::EmbedderControlId;
 use servo::user_contents::UserStyleSheet;
@@ -2189,4 +2191,64 @@ pub extern "C" fn servo_create_memory_report(
     }).expect("Failed to create memory report callback");
 
     servo.create_memory_report(generic_cb);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_toggle_webrender_debugging(handle: *mut c_void, option: u8) {
+    if let Some(wv) = wv_ref(handle) {
+        let debug_option = match option {
+            0 => WebRenderDebugOption::Profiler,
+            1 => WebRenderDebugOption::TextureCacheDebug,
+            2 => WebRenderDebugOption::RenderTargetDebug,
+            _ => return,
+        };
+        wv.webview.toggle_webrender_debugging(debug_option);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_capture_webrender(handle: *mut c_void) {
+    if let Some(wv) = wv_ref(handle) {
+        wv.webview.capture_webrender();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn webview_toggle_sampling_profiler(
+    handle: *mut c_void, rate_ms: u64, max_duration_ms: u64,
+) {
+    if let Some(wv) = wv_ref(handle) {
+        wv.webview.toggle_sampling_profiler(
+            std::time::Duration::from_millis(rate_ms),
+            std::time::Duration::from_millis(max_duration_ms),
+        );
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn servo_initialize_gl_accelerated_media(
+    display_type: u8, display_ptr: usize,
+    api: u8,
+    context_type: u8, context_ptr: usize,
+) {
+    let display = match display_type {
+        0 => MediaNativeDisplay::Egl(display_ptr),
+        1 => MediaNativeDisplay::X11(display_ptr),
+        2 => MediaNativeDisplay::Wayland(display_ptr),
+        3 => MediaNativeDisplay::Headless,
+        _ => MediaNativeDisplay::Unknown,
+    };
+    let gl_api = match api {
+        0 => MediaGlApi::OpenGL,
+        1 => MediaGlApi::OpenGL3,
+        2 => MediaGlApi::Gles1,
+        3 => MediaGlApi::Gles2,
+        _ => MediaGlApi::None,
+    };
+    let context = match context_type {
+        0 => MediaGlContext::Egl(context_ptr),
+        1 => MediaGlContext::Glx(context_ptr),
+        _ => MediaGlContext::Unknown,
+    };
+    Servo::initialize_gl_accelerated_media(display, gl_api, context);
 }

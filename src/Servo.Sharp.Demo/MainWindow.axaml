@@ -7,65 +7,162 @@
         x:Class="Servo.Sharp.Demo.MainWindow"
         Title="Servo C# Demo"
         Width="1024" Height="768">
-    <DockPanel>
-        <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,Auto,Auto,*,Auto" Margin="4,4,4,2">
-            <Button x:Name="BackButton" Grid.Column="0" Content="&#x25C1;" Width="32" Height="28"
-                    IsEnabled="False" Margin="0,0,2,0" FontSize="14"
-                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
-            <Button x:Name="ForwardButton" Grid.Column="1" Content="&#x25B7;" Width="32" Height="28"
-                    IsEnabled="False" Margin="0,0,2,0" FontSize="14"
-                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
-            <Button x:Name="ReloadButton" Grid.Column="2" Content="&#x21BB;" Width="32" Height="28"
-                    Margin="0,0,4,0" FontSize="14"
-                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
-            <TextBox x:Name="UrlBar" Grid.Column="3"
-                     VerticalContentAlignment="Center" Height="28"
-                     FontSize="13"
-                     Text="https://servo.org" />
-            <Button x:Name="ExperimentalButton" Grid.Column="4" Width="32" Height="28"
-                    Margin="4,0,0,0" FontSize="14" Padding="0"
+  <DockPanel>
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,Auto,Auto,*,Auto" Margin="4,4,4,2">
+      <Button x:Name="BackButton" Grid.Column="0" Content="&#x25C1;" Width="32" Height="28"
+              IsEnabled="False" Margin="0,0,2,0" FontSize="14"
+              HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+      <Button x:Name="ForwardButton" Grid.Column="1" Content="&#x25B7;" Width="32" Height="28"
+              IsEnabled="False" Margin="0,0,2,0" FontSize="14"
+              HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+      <Button x:Name="ReloadButton" Grid.Column="2" Content="&#x21BB;" Width="32" Height="28"
+              Margin="0,0,4,0" FontSize="14"
+              HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+      <TextBox x:Name="UrlBar" Grid.Column="3"
+               VerticalContentAlignment="Center" Height="28"
+               FontSize="13"
+               Text="https://servo.org" />
+      <Button x:Name="SettingsButton" Grid.Column="4" Width="32" Height="28"
+              Margin="4,0,0,0" FontSize="14" Padding="0"
+              HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+              ToolTip.Tip="Settings"
+              Content="&#x2699;" />
+    </Grid>
+
+    <Border DockPanel.Dock="Top"
+            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+            Padding="4,2,4,0"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+            BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="*,Auto,Auto">
+        <ScrollViewer Grid.Column="0"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Disabled">
+          <local:DragTabPanel x:Name="TabStrip" />
+        </ScrollViewer>
+        <Button x:Name="NewTabButton" Grid.Column="1"
+                Content="+" Width="28" Height="24"
+                FontSize="16" Padding="0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                Background="Transparent" BorderThickness="0"
+                Margin="4,0,0,0"
+                ToolTip.Tip="New tab" />
+        <Button x:Name="NewWindowButton" Grid.Column="2"
+                Content="&#x229E;" Width="28" Height="24"
+                FontSize="14" Padding="0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                Background="Transparent" BorderThickness="0"
+                Margin="2,0,0,0"
+                ToolTip.Tip="New window" />
+      </Grid>
+    </Border>
+
+    <Border DockPanel.Dock="Bottom"
+            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="6,2">
+      <TextBlock x:Name="StatusText" Text="Ready" FontSize="12"
+                 Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+    </Border>
+
+    <!-- Content area: webview + settings overlay side by side -->
+    <Grid ColumnDefinitions="*,Auto">
+      <Panel x:Name="WebViewContainer" Grid.Column="0" />
+
+      <!-- Settings Panel (right side overlay) -->
+      <Border x:Name="SettingsPanel" Grid.Column="1"
+              IsVisible="False"
+              Width="360"
+              Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+              BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+              BorderThickness="1,0,0,0">
+        <Grid RowDefinitions="Auto,*">
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="16,12,16,8">
+            <TextBlock Text="Settings" FontWeight="SemiBold" FontSize="16"
+                       VerticalAlignment="Center" />
+            <Button x:Name="CloseSettingsButton" Grid.Column="1"
+                    Content="&#x2715;" Width="28" Height="28"
+                    FontSize="12" Padding="0"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                    ToolTip.Tip="Enable/disable experimental web platform features"
-                    Content="&#x2699;" />
-        </Grid>
+                    Background="Transparent" BorderThickness="0" />
+          </Grid>
 
-        <Border DockPanel.Dock="Top"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                Padding="4,2,4,0"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="*,Auto,Auto">
-                <ScrollViewer Grid.Column="0"
-                              HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollBarVisibility="Disabled">
-                    <local:DragTabPanel x:Name="TabStrip" />
-                </ScrollViewer>
-                <Button x:Name="NewTabButton" Grid.Column="1"
-                        Content="+" Width="28" Height="24"
-                        FontSize="16" Padding="0"
-                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                        Background="Transparent" BorderThickness="0"
-                        Margin="4,0,0,0"
-                        ToolTip.Tip="New tab" />
-                <Button x:Name="NewWindowButton" Grid.Column="2"
-                        Content="&#x229E;" Width="28" Height="24"
-                        FontSize="14" Padding="0"
-                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                        Background="Transparent" BorderThickness="0"
-                        Margin="2,0,0,0"
-                        ToolTip.Tip="New window" />
+          <ScrollViewer Grid.Row="1">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="16" RowSpacing="14">
+
+              <Border Grid.Row="0"
+                      BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                      BorderThickness="1" CornerRadius="6" Padding="12">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="Experimental Web Features" FontWeight="SemiBold" FontSize="13" />
+                  <TextBlock Text="Enables experimental CSS and DOM features. Requires page reload."
+                             TextWrapping="Wrap" FontSize="11"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                  <ToggleSwitch x:Name="ExperimentalFeaturesToggle" Content="Enable" />
+                </StackPanel>
+              </Border>
+
+              <Border Grid.Row="1"
+                      BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                      BorderThickness="1" CornerRadius="6" Padding="12">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="WebRender Debug Overlays" FontWeight="SemiBold" FontSize="13" />
+                  <TextBlock Text="Toggle rendering debug visualizations on the active tab."
+                             TextWrapping="Wrap" FontSize="11"
+                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                  <ToggleSwitch x:Name="ProfilerToggle" Content="Profiler" />
+                  <ToggleSwitch x:Name="TextureCacheToggle" Content="Texture Cache" />
+                  <ToggleSwitch x:Name="RenderTargetToggle" Content="Render Targets" />
+                </StackPanel>
+              </Border>
+
+              <!-- Sampling Profiler -->
+              <Border Grid.Row="2"
+                      BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                      BorderThickness="1" CornerRadius="6" Padding="12">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="Sampling Profiler" FontWeight="SemiBold" FontSize="13" />
+                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="4" ColumnSpacing="8">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Rate (ms):" VerticalAlignment="Center" FontSize="12" />
+                    <NumericUpDown x:Name="ProfilerRate" Grid.Row="0" Grid.Column="1"
+                                   Value="1" Minimum="1" Maximum="1000" Increment="1" FormatString="0" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Duration (s):" VerticalAlignment="Center" FontSize="12" />
+                    <NumericUpDown x:Name="ProfilerDuration" Grid.Row="1" Grid.Column="1"
+                                   Value="5" Minimum="1" Maximum="300" Increment="1" FormatString="0" />
+                  </Grid>
+                  <Button x:Name="ToggleProfilerButton" Content="Start Profiler"
+                          HorizontalAlignment="Left" FontSize="12" />
+                </StackPanel>
+              </Border>
+
+              <Border Grid.Row="3"
+                      BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                      BorderThickness="1" CornerRadius="6" Padding="12">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="WebRender Capture" FontWeight="SemiBold" FontSize="13" />
+                  <Button x:Name="CaptureButton" Content="Capture Frame"
+                          HorizontalAlignment="Left" FontSize="12" />
+                </StackPanel>
+              </Border>
+
+              <Border Grid.Row="4"
+                      BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                      BorderThickness="1" CornerRadius="6" Padding="12">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="Memory Report" FontWeight="SemiBold" FontSize="13" />
+                  <Button x:Name="MemoryReportButton" Content="Generate Report"
+                          HorizontalAlignment="Left" FontSize="12" />
+                  <TextBox x:Name="MemoryReportOutput" IsReadOnly="True" AcceptsReturn="True"
+                           Height="150" FontFamily="Consolas,Menlo,monospace" FontSize="10"
+                           IsVisible="False" />
+                </StackPanel>
+              </Border>
+
             </Grid>
-        </Border>
-
-        <Border DockPanel.Dock="Bottom"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                BorderThickness="0,1,0,0"
-                Padding="6,2">
-            <TextBlock x:Name="StatusText" Text="Ready" FontSize="12"
-                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
-        </Border>
-
-        <Panel x:Name="WebViewContainer" />
-    </DockPanel>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+    </Grid>
+  </DockPanel>
 </Window>

@@ -493,6 +493,25 @@ public sealed class ServoWebView : IDisposable
         ServoNative.webview_send_ime_dismissed((void*)_handle);
     }
 
+    public unsafe void ToggleWebRenderDebugging(WebRenderDebugOption option)
+    {
+        ThrowIfDisposed();
+        ServoNative.webview_toggle_webrender_debugging((void*)_handle, (byte)option);
+    }
+
+    public unsafe void CaptureWebRender()
+    {
+        ThrowIfDisposed();
+        ServoNative.webview_capture_webrender((void*)_handle);
+    }
+
+    public unsafe void ToggleSamplingProfiler(TimeSpan rate, TimeSpan maxDuration)
+    {
+        ThrowIfDisposed();
+        ServoNative.webview_toggle_sampling_profiler(
+            (void*)_handle, (ulong)rate.TotalMilliseconds, (ulong)maxDuration.TotalMilliseconds);
+    }
+
     public unsafe void SetThrottled(bool throttled)
     {
         ThrowIfDisposed();

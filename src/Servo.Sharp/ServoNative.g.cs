@@ -344,6 +344,18 @@ namespace Servo.Sharp
         [DllImport(__DllName, EntryPoint = "servo_create_memory_report", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void servo_create_memory_report(void* handle, delegate* unmanaged[Cdecl]<void*, byte*, void> callback, void* callback_data);
 
+        [DllImport(__DllName, EntryPoint = "webview_toggle_webrender_debugging", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void webview_toggle_webrender_debugging(void* handle, byte option);
+
+        [DllImport(__DllName, EntryPoint = "webview_capture_webrender", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void webview_capture_webrender(void* handle);
+
+        [DllImport(__DllName, EntryPoint = "webview_toggle_sampling_profiler", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void webview_toggle_sampling_profiler(void* handle, ulong rate_ms, ulong max_duration_ms);
+
+        [DllImport(__DllName, EntryPoint = "servo_initialize_gl_accelerated_media", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void servo_initialize_gl_accelerated_media(byte display_type, nuint display_ptr, byte api, byte context_type, nuint context_ptr);
+
 
     }
 

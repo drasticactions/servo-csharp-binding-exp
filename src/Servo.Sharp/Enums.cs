@@ -168,6 +168,38 @@ public enum InputMethodType : byte
     Week = 12,
 }
 
+public enum WebRenderDebugOption : byte
+{
+    Profiler = 0,
+    TextureCacheDebug = 1,
+    RenderTargetDebug = 2,
+}
+
+public enum GlDisplayType : byte
+{
+    Egl = 0,
+    X11 = 1,
+    Wayland = 2,
+    Headless = 3,
+    Unknown = 4,
+}
+
+public enum GlApiType : byte
+{
+    OpenGL = 0,
+    OpenGL3 = 1,
+    Gles1 = 2,
+    Gles2 = 3,
+    None = 4,
+}
+
+public enum GlContextType : byte
+{
+    Egl = 0,
+    Glx = 1,
+    Unknown = 2,
+}
+
 public enum CompositionState : byte
 {
     Start = 0,

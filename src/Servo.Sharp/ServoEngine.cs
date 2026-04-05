@@ -165,6 +165,15 @@ public sealed class ServoEngine : IDisposable
         ServoNative.servo_clear_cache((void*)_handle);
     }
 
+    public static unsafe void InitializeGlAcceleratedMedia(
+        GlDisplayType displayType, nuint displayPtr,
+        GlApiType api,
+        GlContextType contextType, nuint contextPtr)
+    {
+        ServoNative.servo_initialize_gl_accelerated_media(
+            (byte)displayType, displayPtr, (byte)api, (byte)contextType, contextPtr);
+    }
+
     public unsafe Task<string?> CreateMemoryReportAsync()
     {
         ThrowIfDisposed();
