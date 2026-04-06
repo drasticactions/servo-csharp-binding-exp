@@ -5243,6 +5243,7 @@ dependencies = [
  "env_logger",
  "euclid",
  "gaol",
+ "http 1.4.0",
  "image",
  "ipc-channel",
  "keyboard-types",
@@ -5416,6 +5417,7 @@ version = "0.1.0"
 dependencies = [
  "accesskit",
  "backtrace",
+ "base64 0.22.1",
  "content-security-policy",
  "crossbeam-channel",
  "euclid",
@@ -5456,6 +5458,7 @@ dependencies = [
 name = "servo-constellation-traits"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "content-security-policy",
  "encoding_rs",
  "euclid",

@@ -6,6 +6,7 @@
 # dotenv files
 .env
 Cargo.lock
+servo-ffi/Cargo.lock
 
 # User-specific files
 *.rsuser
