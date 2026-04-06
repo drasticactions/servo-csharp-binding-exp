@@ -134,7 +134,11 @@ public class ColorPickerOverlay : TemplatedControl
 
     private void UpdatePreviewAndHex()
     {
-        PreviewBrush = new SolidColorBrush(Color.FromRgb(R, G, B));
+        var color = Color.FromRgb(R, G, B);
+        if (PreviewBrush is SolidColorBrush existing)
+            existing.Color = color;
+        else
+            PreviewBrush = new SolidColorBrush(color);
         if (!_updatingHex)
             HexText = $"#{R:X2}{G:X2}{B:X2}";
     }

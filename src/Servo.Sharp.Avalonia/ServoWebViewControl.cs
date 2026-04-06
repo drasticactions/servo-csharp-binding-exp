@@ -113,6 +113,7 @@ public class ServoWebViewControl : Control
     private ServoBitmapSurface? _surface;
     private Panel? _contentHost;
     private double _lastScaling = 1.0;
+    private double _cachedScaling = 1.0;
     private TopLevel? _topLevel;
     private SelectElementOverlay? _activeSelectOverlay;
     private AuthenticationOverlay? _activeAuthOverlay;
@@ -244,6 +245,7 @@ public class ServoWebViewControl : Control
 
         var scaling = GetScaling();
         _lastScaling = scaling;
+        _cachedScaling = scaling;
         var (pw, ph) = GetPixelSize(scaling);
 
         _renderingContext = RenderingBackend == ServoRenderingBackend.Hardware
@@ -266,249 +268,35 @@ public class ServoWebViewControl : Control
         _webView.NotifyThemeChange(GetServoTheme());
 
         _webView.NewFrameReady += OnNewFrameReady;
-        _webView.LoadStatusChanged += (_, e) => Dispatcher.UIThread.Post(() =>
-        {
-            IsLoading = e.Status != Sharp.LoadStatus.Complete;
-            LoadStatusChanged?.Invoke(this, e);
-        });
-        _webView.UrlChanged += (_, e) => Dispatcher.UIThread.Post(() =>
-            Navigated?.Invoke(this, e));
-        _webView.TitleChanged += (_, e) => Dispatcher.UIThread.Post(() =>
-        {
-            PageTitle = e.Title;
-            TitleChanged?.Invoke(this, e);
-        });
-        _webView.CursorChanged += (_, e) => Dispatcher.UIThread.Post(() =>
-            Cursor = new Cursor(AvaloniaKeyMapping.ToAvaloniaCursor(e.Cursor)));
-        _webView.HistoryChanged += (_, e) => Dispatcher.UIThread.Post(() =>
-        {
-            CanGoBack = _webView?.CanGoBack ?? false;
-            CanGoForward = _webView?.CanGoForward ?? false;
-            HistoryChanged?.Invoke(this, e);
-        });
-        _webView.Crashed += (_, e) => Dispatcher.UIThread.Post(() => Crashed?.Invoke(this, e));
-        _webView.WebViewConsoleMessage += (_, e) => Dispatcher.UIThread.Post(() => ConsoleMessage?.Invoke(this, e));
-        _webView.NavigationRequested += (_, e) =>
-        {
-            if (NavigationRequested != null) NavigationRequested.Invoke(this, e);
-            else e.Allow();
-        };
-        _webView.AlertRequested += (_, e) =>
-        {
-            if (AlertRequested != null) AlertRequested.Invoke(this, e);
-            else e.Dismiss();
-        };
-        _webView.ConfirmRequested += (_, e) =>
-        {
-            if (ConfirmRequested != null) ConfirmRequested.Invoke(this, e);
-            else e.Cancel();
-        };
-        _webView.PromptRequested += (_, e) =>
-        {
-            if (PromptRequested != null) PromptRequested.Invoke(this, e);
-            else e.Cancel();
-        };
-        _webView.SelectElementRequested += (_, e) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (_contentHost == null) { e.Dismiss(); return; }
-
-                // Let consumers override the default behavior if needed
-                if (SelectElementRequested != null)
-                {
-                    SelectElementRequested.Invoke(this, e);
-                    return;
-                }
-
-                var overlay = new SelectElementOverlay();
-                overlay.Initialize(_contentHost, e);
-                _activeSelectOverlay = overlay;
-                _contentHost.Children.Add(overlay);
-            });
-        };
-        _webView.ContextMenuRequested += (_, e) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (ContextMenuRequested != null)
-                {
-                    ContextMenuRequested.Invoke(this, e);
-                    return;
-                }
-
-                ShowDefaultContextMenu(e);
-            });
-        };
-        _webView.UnloadRequested += (_, e) => e.Allow();
-        _webView.CreateNewWebViewRequested += (_, e) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                var handler = CreateNewWebViewRequested;
-                if (handler != null)
-                {
-                    handler.Invoke(this, e);
-                    if (!e.IsHandled)
-                        e.Dismiss();
-                }
-                else
-                {
-                    e.Dismiss();
-                }
-            });
-        };
-        _webView.AuthenticationRequested += (_, e) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (_contentHost == null) { e.Dismiss(); return; }
-
-                if (AuthenticationRequested != null)
-                {
-                    AuthenticationRequested.Invoke(this, e);
-                    return;
-                }
-
-                var overlay = new AuthenticationOverlay();
-                overlay.Initialize(_contentHost, e);
-                _activeAuthOverlay = overlay;
-                _contentHost.Children.Add(overlay);
-            });
-        };
-        _webView.HideEmbedderControlRequested += (_, e) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                DismissActiveEmbedderControls();
-                HideEmbedderControlRequested?.Invoke(this, e);
-            });
-        };
-        _webView.WebResourceLoadRequested += (_, e) =>
-        {
-            if (WebResourceLoadRequested != null)
-                WebResourceLoadRequested.Invoke(this, e);
-            else
-                e.Allow();
-        };
-        _webView.StatusTextChanged += (_, e) =>
-            Dispatcher.UIThread.Post(() => StatusTextChanged?.Invoke(this, e));
-        _webView.TraversalCompleted += (_, e) =>
-            Dispatcher.UIThread.Post(() => TraversalCompleted?.Invoke(this, e));
-        _webView.MoveToRequested += (_, e) =>
-            Dispatcher.UIThread.Post(() => MoveToRequested?.Invoke(this, e));
-        _webView.ResizeToRequested += (_, e) =>
-            Dispatcher.UIThread.Post(() => ResizeToRequested?.Invoke(this, e));
-        _webView.ProtocolHandlerRequested += (_, e) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (_contentHost == null) { e.Deny(); return; }
-
-                if (ProtocolHandlerRequested != null)
-                {
-                    ProtocolHandlerRequested.Invoke(this, e);
-                    return;
-                }
-
-                var overlay = new ProtocolHandlerOverlay();
-                overlay.Initialize(_contentHost, e);
-                _activeProtocolHandlerOverlay = overlay;
-                _contentHost.Children.Add(overlay);
-            });
-        };
-        _webView.NotificationRequested += (_, e) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (_contentHost == null) return;
-
-                if (NotificationRequested != null)
-                {
-                    NotificationRequested.Invoke(this, e);
-                    return;
-                }
-
-                var overlay = new NotificationOverlay();
-                overlay.Initialize(_contentHost, e);
-                _contentHost.Children.Add(overlay);
-            });
-        };
-        _webView.BluetoothDeviceSelectionRequested += (_, e) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (_contentHost == null) { e.Cancel(); return; }
-
-                if (BluetoothDeviceSelectionRequested != null)
-                {
-                    BluetoothDeviceSelectionRequested.Invoke(this, e);
-                    return;
-                }
-
-                var overlay = new BluetoothDeviceOverlay();
-                overlay.Initialize(_contentHost, e);
-                _activeBluetoothOverlay = overlay;
-                _contentHost.Children.Add(overlay);
-            });
-        };
-        _webView.GamepadHapticEffectRequested += (_, e) =>
-        {
-            if (GamepadHapticEffectRequested != null)
-                GamepadHapticEffectRequested.Invoke(this, e);
-            else
-                e.Failed(); // no handler, report failure
-        };
-        _webView.FilePickerRequested += (_, e) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (FilePickerRequested != null)
-                {
-                    FilePickerRequested.Invoke(this, e);
-                    return;
-                }
-
-                var topLevel = TopLevel.GetTopLevel(this);
-                if (topLevel != null)
-                    FilePickerHandler.HandleRequest(topLevel, e);
-                else
-                    e.Dismiss();
-            });
-        };
-        _webView.ColorPickerRequested += (_, e) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (_contentHost == null) { e.Dismiss(); return; }
-
-                if (ColorPickerRequested != null)
-                {
-                    ColorPickerRequested.Invoke(this, e);
-                    return;
-                }
-
-                var overlay = new ColorPickerOverlay();
-                overlay.Initialize(_contentHost, e);
-                _activeColorPickerOverlay = overlay;
-                _contentHost.Children.Add(overlay);
-            });
-        };
-
-        _webView.InputMethodRequested += (_, e) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                var s = GetScaling();
-                _imeClient?.UpdateCursorRect(
-                    e.PositionX,
-                    e.PositionY,
-                    e.PositionWidth,
-                    e.PositionHeight);
-
-                InputMethodRequested?.Invoke(this, e);
-            });
-        };
+        _webView.LoadStatusChanged += OnWebViewLoadStatusChanged;
+        _webView.UrlChanged += OnWebViewUrlChanged;
+        _webView.TitleChanged += OnWebViewTitleChanged;
+        _webView.CursorChanged += OnWebViewCursorChanged;
+        _webView.HistoryChanged += OnWebViewHistoryChanged;
+        _webView.Crashed += OnWebViewCrashed;
+        _webView.WebViewConsoleMessage += OnWebViewConsoleMessage;
+        _webView.NavigationRequested += OnWebViewNavigationRequested;
+        _webView.AlertRequested += OnWebViewAlertRequested;
+        _webView.ConfirmRequested += OnWebViewConfirmRequested;
+        _webView.PromptRequested += OnWebViewPromptRequested;
+        _webView.SelectElementRequested += OnWebViewSelectElementRequested;
+        _webView.ContextMenuRequested += OnWebViewContextMenuRequested;
+        _webView.UnloadRequested += OnWebViewUnloadRequested;
+        _webView.CreateNewWebViewRequested += OnWebViewCreateNewWebViewRequested;
+        _webView.AuthenticationRequested += OnWebViewAuthenticationRequested;
+        _webView.HideEmbedderControlRequested += OnWebViewHideEmbedderControlRequested;
+        _webView.WebResourceLoadRequested += OnWebViewWebResourceLoadRequested;
+        _webView.StatusTextChanged += OnWebViewStatusTextChanged;
+        _webView.TraversalCompleted += OnWebViewTraversalCompleted;
+        _webView.MoveToRequested += OnWebViewMoveToRequested;
+        _webView.ResizeToRequested += OnWebViewResizeToRequested;
+        _webView.ProtocolHandlerRequested += OnWebViewProtocolHandlerRequested;
+        _webView.NotificationRequested += OnWebViewNotificationRequested;
+        _webView.BluetoothDeviceSelectionRequested += OnWebViewBluetoothDeviceSelectionRequested;
+        _webView.GamepadHapticEffectRequested += OnWebViewGamepadHapticEffectRequested;
+        _webView.FilePickerRequested += OnWebViewFilePickerRequested;
+        _webView.ColorPickerRequested += OnWebViewColorPickerRequested;
+        _webView.InputMethodRequested += OnWebViewInputMethodRequested;
 
         _webView.Show();
         _webView.Focus();
@@ -516,6 +304,41 @@ public class ServoWebViewControl : Control
 
     private void Cleanup()
     {
+        if (_webView != null)
+        {
+            _webView.NewFrameReady -= OnNewFrameReady;
+            _webView.LoadStatusChanged -= OnWebViewLoadStatusChanged;
+            _webView.UrlChanged -= OnWebViewUrlChanged;
+            _webView.TitleChanged -= OnWebViewTitleChanged;
+            _webView.CursorChanged -= OnWebViewCursorChanged;
+            _webView.HistoryChanged -= OnWebViewHistoryChanged;
+            _webView.Crashed -= OnWebViewCrashed;
+            _webView.WebViewConsoleMessage -= OnWebViewConsoleMessage;
+            _webView.NavigationRequested -= OnWebViewNavigationRequested;
+            _webView.AlertRequested -= OnWebViewAlertRequested;
+            _webView.ConfirmRequested -= OnWebViewConfirmRequested;
+            _webView.PromptRequested -= OnWebViewPromptRequested;
+            _webView.SelectElementRequested -= OnWebViewSelectElementRequested;
+            _webView.ContextMenuRequested -= OnWebViewContextMenuRequested;
+            _webView.UnloadRequested -= OnWebViewUnloadRequested;
+            _webView.CreateNewWebViewRequested -= OnWebViewCreateNewWebViewRequested;
+            _webView.AuthenticationRequested -= OnWebViewAuthenticationRequested;
+            _webView.HideEmbedderControlRequested -= OnWebViewHideEmbedderControlRequested;
+            _webView.WebResourceLoadRequested -= OnWebViewWebResourceLoadRequested;
+            _webView.StatusTextChanged -= OnWebViewStatusTextChanged;
+            _webView.TraversalCompleted -= OnWebViewTraversalCompleted;
+            _webView.MoveToRequested -= OnWebViewMoveToRequested;
+            _webView.ResizeToRequested -= OnWebViewResizeToRequested;
+            _webView.ProtocolHandlerRequested -= OnWebViewProtocolHandlerRequested;
+            _webView.NotificationRequested -= OnWebViewNotificationRequested;
+            _webView.BluetoothDeviceSelectionRequested -= OnWebViewBluetoothDeviceSelectionRequested;
+            _webView.GamepadHapticEffectRequested -= OnWebViewGamepadHapticEffectRequested;
+            _webView.FilePickerRequested -= OnWebViewFilePickerRequested;
+            _webView.ColorPickerRequested -= OnWebViewColorPickerRequested;
+            _webView.InputMethodRequested -= OnWebViewInputMethodRequested;
+            _webView.Dispose();
+            _webView = null;
+        }
         if (_contentHost != null)
         {
             VisualChildren.Remove(_contentHost);
@@ -523,7 +346,6 @@ public class ServoWebViewControl : Control
             _contentHost = null;
         }
         _surface = null;
-        _webView?.Dispose(); _webView = null;
         // Engine is NOT disposed here — it's owned by the app, not the control.
         _renderingContext?.Dispose(); _renderingContext = null;
     }
@@ -552,7 +374,7 @@ public class ServoWebViewControl : Control
     {
         if (_webView == null || HasModalOverlay) return;
         var pos = e.GetPosition(this);
-        var s = GetScaling();
+        var s = _cachedScaling;
         // Delta.X contains the magnification delta (e.g. 0.02 for 2% zoom in)
         var delta = 1.0f + (float)e.Delta.X;
         _webView.AdjustPinchZoom(delta, (float)(pos.X * s), (float)(pos.Y * s));
@@ -568,6 +390,7 @@ public class ServoWebViewControl : Control
     {
         if (_webView == null) return;
         var scaling = GetScaling();
+        _cachedScaling = scaling;
         var (pw, ph) = GetPixelSize(scaling);
         if (pw == 0 || ph == 0) return;
 
@@ -595,7 +418,7 @@ public class ServoWebViewControl : Control
         if (_webView == null || HasModalOverlay) return;
         Focus();
         var pos = e.GetPosition(this);
-        var s = GetScaling();
+        var s = _cachedScaling;
         var props = e.GetCurrentPoint(this).Properties;
         var button = ServoMouseButton.Left;
         if (props.IsMiddleButtonPressed) button = ServoMouseButton.Middle;
@@ -610,7 +433,7 @@ public class ServoWebViewControl : Control
         base.OnPointerReleased(e);
         if (_webView == null || HasModalOverlay) return;
         var pos = e.GetPosition(this);
-        var s = GetScaling();
+        var s = _cachedScaling;
         var button = AvaloniaKeyMapping.ToServoButton(e.InitialPressMouseButton);
         _webView.SendMouseButton(MouseButtonAction.Up, button, (float)(pos.X * s), (float)(pos.Y * s));
     }
@@ -620,7 +443,7 @@ public class ServoWebViewControl : Control
         base.OnPointerMoved(e);
         if (_webView == null || HasModalOverlay) return;
         var pos = e.GetPosition(this);
-        var s = GetScaling();
+        var s = _cachedScaling;
         _webView.SendMouseMove((float)(pos.X * s), (float)(pos.Y * s));
     }
 
@@ -635,7 +458,7 @@ public class ServoWebViewControl : Control
         base.OnPointerWheelChanged(e);
         if (_webView == null || HasModalOverlay) return;
         var pos = e.GetPosition(this);
-        var s = GetScaling();
+        var s = _cachedScaling;
         _webView.SendWheel(e.Delta.X * 40.0, e.Delta.Y * 40.0, WheelMode.DeltaPixel,
             (float)(pos.X * s), (float)(pos.Y * s));
     }
@@ -707,6 +530,244 @@ public class ServoWebViewControl : Control
         base.OnLostFocus(e);
         _webView?.Blur();
     }
+
+    private void OnWebViewLoadStatusChanged(object? sender, LoadStatusChangedEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            IsLoading = e.Status != Sharp.LoadStatus.Complete;
+            LoadStatusChanged?.Invoke(this, e);
+        });
+
+    private void OnWebViewUrlChanged(object? sender, UrlChangedEventArgs e) =>
+        Dispatcher.UIThread.Post(() => Navigated?.Invoke(this, e));
+
+    private void OnWebViewTitleChanged(object? sender, TitleChangedEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            PageTitle = e.Title;
+            TitleChanged?.Invoke(this, e);
+        });
+
+    private void OnWebViewCursorChanged(object? sender, CursorChangedEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+            Cursor = new Cursor(AvaloniaKeyMapping.ToAvaloniaCursor(e.Cursor)));
+
+    private void OnWebViewHistoryChanged(object? sender, HistoryChangedEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            CanGoBack = _webView?.CanGoBack ?? false;
+            CanGoForward = _webView?.CanGoForward ?? false;
+            HistoryChanged?.Invoke(this, e);
+        });
+
+    private void OnWebViewCrashed(object? sender, CrashedEventArgs e) =>
+        Dispatcher.UIThread.Post(() => Crashed?.Invoke(this, e));
+
+    private void OnWebViewConsoleMessage(object? sender, ConsoleMessageEventArgs e) =>
+        Dispatcher.UIThread.Post(() => ConsoleMessage?.Invoke(this, e));
+
+    private void OnWebViewNavigationRequested(object? sender, NavigationRequestEventArgs e)
+    {
+        if (NavigationRequested != null) NavigationRequested.Invoke(this, e);
+        else e.Allow();
+    }
+
+    private void OnWebViewAlertRequested(object? sender, AlertRequestEventArgs e)
+    {
+        if (AlertRequested != null) AlertRequested.Invoke(this, e);
+        else e.Dismiss();
+    }
+
+    private void OnWebViewConfirmRequested(object? sender, ConfirmRequestEventArgs e)
+    {
+        if (ConfirmRequested != null) ConfirmRequested.Invoke(this, e);
+        else e.Cancel();
+    }
+
+    private void OnWebViewPromptRequested(object? sender, PromptRequestEventArgs e)
+    {
+        if (PromptRequested != null) PromptRequested.Invoke(this, e);
+        else e.Cancel();
+    }
+
+    private void OnWebViewSelectElementRequested(object? sender, SelectElementRequestEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_contentHost == null) { e.Dismiss(); return; }
+            if (SelectElementRequested != null)
+            {
+                SelectElementRequested.Invoke(this, e);
+                return;
+            }
+            var overlay = new SelectElementOverlay();
+            overlay.Initialize(_contentHost, e);
+            _activeSelectOverlay = overlay;
+            _contentHost.Children.Add(overlay);
+        });
+
+    private void OnWebViewContextMenuRequested(object? sender, ContextMenuRequestEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (ContextMenuRequested != null)
+            {
+                ContextMenuRequested.Invoke(this, e);
+                return;
+            }
+            ShowDefaultContextMenu(e);
+        });
+
+    private void OnWebViewUnloadRequested(object? sender, UnloadRequestEventArgs e) => e.Allow();
+
+    private void OnWebViewCreateNewWebViewRequested(object? sender, CreateNewWebViewRequestEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            var handler = CreateNewWebViewRequested;
+            if (handler != null)
+            {
+                handler.Invoke(this, e);
+                if (!e.IsHandled)
+                    e.Dismiss();
+            }
+            else
+            {
+                e.Dismiss();
+            }
+        });
+
+    private void OnWebViewAuthenticationRequested(object? sender, AuthenticationRequestEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_contentHost == null) { e.Dismiss(); return; }
+            if (AuthenticationRequested != null)
+            {
+                AuthenticationRequested.Invoke(this, e);
+                return;
+            }
+            var overlay = new AuthenticationOverlay();
+            overlay.Initialize(_contentHost, e);
+            _activeAuthOverlay = overlay;
+            _contentHost.Children.Add(overlay);
+        });
+
+    private void OnWebViewHideEmbedderControlRequested(object? sender, EventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            DismissActiveEmbedderControls();
+            HideEmbedderControlRequested?.Invoke(this, e);
+        });
+
+    private void OnWebViewWebResourceLoadRequested(object? sender, WebResourceLoadEventArgs e)
+    {
+        if (WebResourceLoadRequested != null)
+            WebResourceLoadRequested.Invoke(this, e);
+        else
+            e.Allow();
+    }
+
+    private void OnWebViewStatusTextChanged(object? sender, StatusTextChangedEventArgs e) =>
+        Dispatcher.UIThread.Post(() => StatusTextChanged?.Invoke(this, e));
+
+    private void OnWebViewTraversalCompleted(object? sender, EventArgs e) =>
+        Dispatcher.UIThread.Post(() => TraversalCompleted?.Invoke(this, e));
+
+    private void OnWebViewMoveToRequested(object? sender, MoveToRequestEventArgs e) =>
+        Dispatcher.UIThread.Post(() => MoveToRequested?.Invoke(this, e));
+
+    private void OnWebViewResizeToRequested(object? sender, ResizeToRequestEventArgs e) =>
+        Dispatcher.UIThread.Post(() => ResizeToRequested?.Invoke(this, e));
+
+    private void OnWebViewProtocolHandlerRequested(object? sender, ProtocolHandlerRequestEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_contentHost == null) { e.Deny(); return; }
+            if (ProtocolHandlerRequested != null)
+            {
+                ProtocolHandlerRequested.Invoke(this, e);
+                return;
+            }
+            var overlay = new ProtocolHandlerOverlay();
+            overlay.Initialize(_contentHost, e);
+            _activeProtocolHandlerOverlay = overlay;
+            _contentHost.Children.Add(overlay);
+        });
+
+    private void OnWebViewNotificationRequested(object? sender, NotificationEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_contentHost == null) return;
+            if (NotificationRequested != null)
+            {
+                NotificationRequested.Invoke(this, e);
+                return;
+            }
+            var overlay = new NotificationOverlay();
+            overlay.Initialize(_contentHost, e);
+            _contentHost.Children.Add(overlay);
+        });
+
+    private void OnWebViewBluetoothDeviceSelectionRequested(object? sender, BluetoothDeviceSelectionEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_contentHost == null) { e.Cancel(); return; }
+            if (BluetoothDeviceSelectionRequested != null)
+            {
+                BluetoothDeviceSelectionRequested.Invoke(this, e);
+                return;
+            }
+            var overlay = new BluetoothDeviceOverlay();
+            overlay.Initialize(_contentHost, e);
+            _activeBluetoothOverlay = overlay;
+            _contentHost.Children.Add(overlay);
+        });
+
+    private void OnWebViewGamepadHapticEffectRequested(object? sender, GamepadHapticEffectEventArgs e)
+    {
+        if (GamepadHapticEffectRequested != null)
+            GamepadHapticEffectRequested.Invoke(this, e);
+        else
+            e.Failed();
+    }
+
+    private void OnWebViewFilePickerRequested(object? sender, FilePickerRequestEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (FilePickerRequested != null)
+            {
+                FilePickerRequested.Invoke(this, e);
+                return;
+            }
+            var topLevel = TopLevel.GetTopLevel(this);
+            if (topLevel != null)
+                _ = FilePickerHandler.HandleRequest(topLevel, e);
+            else
+                e.Dismiss();
+        });
+
+    private void OnWebViewColorPickerRequested(object? sender, ColorPickerRequestEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_contentHost == null) { e.Dismiss(); return; }
+            if (ColorPickerRequested != null)
+            {
+                ColorPickerRequested.Invoke(this, e);
+                return;
+            }
+            var overlay = new ColorPickerOverlay();
+            overlay.Initialize(_contentHost, e);
+            _activeColorPickerOverlay = overlay;
+            _contentHost.Children.Add(overlay);
+        });
+
+    private void OnWebViewInputMethodRequested(object? sender, InputMethodEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            _imeClient?.UpdateCursorRect(
+                e.PositionX,
+                e.PositionY,
+                e.PositionWidth,
+                e.PositionHeight);
+            InputMethodRequested?.Invoke(this, e);
+        });
 
     private void DismissActiveEmbedderControls()
     {

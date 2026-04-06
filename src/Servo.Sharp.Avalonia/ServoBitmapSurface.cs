@@ -33,6 +33,9 @@ internal class ServoBitmapSurface : Control
             return;
         }
 
+        // During DPI transitions, Servo may produce all-zero (blank) frames while
+        // reconfiguring its rendering pipeline. Keep showing the previous valid bitmap
+        // to avoid flashing blank content.
         if (pixels.Data.AsSpan().IndexOfAnyExcept((byte)0) == -1 && _bitmap != null)
         {
             context.DrawImage(_bitmap, new Rect(Bounds.Size));
@@ -57,5 +60,12 @@ internal class ServoBitmapSurface : Control
         }
 
         context.DrawImage(_bitmap, new Rect(Bounds.Size));
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _bitmap?.Dispose();
+        _bitmap = null;
+        base.OnDetachedFromVisualTree(e);
     }
 }

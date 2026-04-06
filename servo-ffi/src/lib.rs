@@ -163,6 +163,14 @@ impl ProtocolHandler for FfiProtocolHandler {
             )));
         }
 
+        // Reject unreasonably large responses (256 MB) to prevent OOM from malformed data
+        const MAX_BODY_LEN: usize = 256 * 1024 * 1024;
+        if c_response.body_len > MAX_BODY_LEN {
+            return Box::pin(future::ready(NetResponse::network_error(
+                NetworkError::ResourceLoadError("Protocol handler response too large".into()),
+            )));
+        }
+
         // Copy data from C# pointers before they become invalid
         let body = unsafe { std::slice::from_raw_parts(c_response.body, c_response.body_len) }.to_vec();
         let content_type = if !c_response.content_type.is_null() {
@@ -215,6 +223,9 @@ pub extern "C" fn servo_protocol_registry_register(
         Ok(s) => s,
         Err(_) => return 3,
     };
+    // Box::leak is intentional: the ProtocolHandler trait requires &'static [&'static str]
+    // for privileged_paths(). Protocol handlers are registered once at startup, so these
+    // allocations live for the program's lifetime.
     let mut privileged_strs = Vec::new();
     if !handler.privileged_paths.is_null() && handler.privileged_paths_len > 0 {
         let ptrs = unsafe {

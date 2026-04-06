@@ -85,10 +85,12 @@ impl HardwareRenderingContext {
 
 impl Drop for HardwareRenderingContext {
     fn drop(&mut self) {
-        let device = &mut self.device.borrow_mut();
-        let context = &mut self.context.borrow_mut();
-        let _ = self.swap_chain.destroy(device, context);
-        let _ = device.destroy_context(context);
+        if let (Ok(mut device), Ok(mut context)) =
+            (self.device.try_borrow_mut(), self.context.try_borrow_mut())
+        {
+            let _ = self.swap_chain.destroy(&mut device, &mut context);
+            let _ = device.destroy_context(&mut context);
+        }
     }
 }
 

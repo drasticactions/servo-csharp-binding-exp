@@ -61,6 +61,7 @@ public class NotificationOverlay : TemplatedControl
         if (_closed) return;
         _closed = true;
         _timer?.Stop();
+        _timer = null;
         _host?.Children.Remove(this);
     }
 }

@@ -47,44 +47,56 @@ public sealed class ServoEngine : IDisposable
     {
         _protocolRegistry = protocolRegistry;
         _wakerHandle = GCHandle.Alloc(this);
-
-        var waker = new CEventLoopWaker
+        try
         {
-            user_data = (void*)GCHandle.ToIntPtr(_wakerHandle),
-            wake = &WakeCallbackImpl,
-        };
+            var waker = new CEventLoopWaker
+            {
+                user_data = (void*)GCHandle.ToIntPtr(_wakerHandle),
+                wake = &WakeCallbackImpl,
+            };
 
-        var registryPtr = protocolRegistry?.ConsumeHandle() ?? 0;
+            var registryPtr = protocolRegistry?.ConsumeHandle() ?? 0;
 
-        if (resourcePath != null)
-        {
-            var pResource = Marshal.StringToCoTaskMemUTF8(resourcePath);
-            try { _handle = (nint)ServoNative.servo_new(waker, (byte*)pResource, (void*)registryPtr); }
-            finally { Marshal.FreeCoTaskMem(pResource); }
+            if (resourcePath != null)
+            {
+                var pResource = Marshal.StringToCoTaskMemUTF8(resourcePath);
+                try { _handle = (nint)ServoNative.servo_new(waker, (byte*)pResource, (void*)registryPtr); }
+                finally { Marshal.FreeCoTaskMem(pResource); }
+            }
+            else
+            {
+                _handle = (nint)ServoNative.servo_new(waker, null, (void*)registryPtr);
+            }
+
+            if (_handle == 0)
+            {
+                var error = GetLastError();
+                throw new InvalidOperationException($"Failed to create Servo engine: {error}");
+            }
+
+            _delegateHandle = GCHandle.Alloc(this);
+            var servoCallbacks = new ServoCallbacks
+            {
+                user_data = (void*)GCHandle.ToIntPtr(_delegateHandle),
+                on_error = &OnErrorImpl,
+                on_devtools_started = &OnDevtoolsStartedImpl,
+                on_console_message = &OnConsoleMessageImpl,
+                on_load_web_resource = &OnLoadWebResourceImpl,
+                on_show_notification = &OnShowNotificationImpl,
+            };
+            ServoNative.servo_set_delegate((void*)_handle, servoCallbacks);
         }
-        else
+        catch
         {
-            _handle = (nint)ServoNative.servo_new(waker, null, (void*)registryPtr);
-        }
-
-        if (_handle == 0)
-        {
+            if (_handle != 0)
+            {
+                ServoNative.servo_destroy((void*)_handle);
+                _handle = 0;
+            }
+            if (_delegateHandle.IsAllocated) _delegateHandle.Free();
             _wakerHandle.Free();
-            var error = GetLastError();
-            throw new InvalidOperationException($"Failed to create Servo engine: {error}");
+            throw;
         }
-
-        _delegateHandle = GCHandle.Alloc(this);
-        var servoCallbacks = new ServoCallbacks
-        {
-            user_data = (void*)GCHandle.ToIntPtr(_delegateHandle),
-            on_error = &OnErrorImpl,
-            on_devtools_started = &OnDevtoolsStartedImpl,
-            on_console_message = &OnConsoleMessageImpl,
-            on_load_web_resource = &OnLoadWebResourceImpl,
-            on_show_notification = &OnShowNotificationImpl,
-        };
-        ServoNative.servo_set_delegate((void*)_handle, servoCallbacks);
     }
 
     public unsafe void SpinEventLoop()

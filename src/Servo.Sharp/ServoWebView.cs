@@ -54,31 +54,36 @@ public sealed class ServoWebView : IDisposable
     private unsafe ServoWebView(ServoEngine engine, nint renderingCtxHandle, string? initialUrl)
     {
         _selfHandle = GCHandle.Alloc(this);
-        var callbacks = BuildCallbacks();
-        var clipboard = new ClipboardCallbacks();
-
-        if (initialUrl != null)
+        try
         {
-            var pUrl = Marshal.StringToCoTaskMemUTF8(initialUrl);
-            try
+            var callbacks = BuildCallbacks();
+            var clipboard = new ClipboardCallbacks();
+
+            if (initialUrl != null)
+            {
+                var pUrl = Marshal.StringToCoTaskMemUTF8(initialUrl);
+                try
+                {
+                    _handle = (nint)ServoNative.webview_new(
+                        (void*)engine.Handle, (void*)renderingCtxHandle,
+                        callbacks, clipboard, (byte*)pUrl);
+                }
+                finally { Marshal.FreeCoTaskMem(pUrl); }
+            }
+            else
             {
                 _handle = (nint)ServoNative.webview_new(
                     (void*)engine.Handle, (void*)renderingCtxHandle,
-                    callbacks, clipboard, (byte*)pUrl);
+                    callbacks, clipboard, null);
             }
-            finally { Marshal.FreeCoTaskMem(pUrl); }
-        }
-        else
-        {
-            _handle = (nint)ServoNative.webview_new(
-                (void*)engine.Handle, (void*)renderingCtxHandle,
-                callbacks, clipboard, null);
-        }
 
-        if (_handle == 0)
+            if (_handle == 0)
+                throw new InvalidOperationException("Failed to create WebView");
+        }
+        catch
         {
             _selfHandle.Free();
-            throw new InvalidOperationException("Failed to create WebView");
+            throw;
         }
     }
 
@@ -88,17 +93,22 @@ public sealed class ServoWebView : IDisposable
     public unsafe ServoWebView(RenderingContext renderingContext, nuint requestHandle)
     {
         _selfHandle = GCHandle.Alloc(this);
-        var callbacks = BuildCallbacks();
-        var clipboard = new ClipboardCallbacks();
+        try
+        {
+            var callbacks = BuildCallbacks();
+            var clipboard = new ClipboardCallbacks();
 
-        _handle = (nint)ServoNative.create_new_webview_build(
-            requestHandle, (void*)renderingContext.Handle,
-            callbacks, clipboard);
+            _handle = (nint)ServoNative.create_new_webview_build(
+                requestHandle, (void*)renderingContext.Handle,
+                callbacks, clipboard);
 
-        if (_handle == 0)
+            if (_handle == 0)
+                throw new InvalidOperationException("Failed to create WebView from CreateNewWebViewRequest");
+        }
+        catch
         {
             _selfHandle.Free();
-            throw new InvalidOperationException("Failed to create WebView from CreateNewWebViewRequest");
+            throw;
         }
     }
 

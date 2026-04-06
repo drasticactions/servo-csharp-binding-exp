@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 
@@ -8,7 +9,7 @@ namespace Servo.Sharp.Avalonia;
 
 internal static class FilePickerHandler
 {
-    public static async void HandleRequest(TopLevel topLevel, FilePickerRequestEventArgs request)
+    public static async Task HandleRequest(TopLevel topLevel, FilePickerRequestEventArgs request)
     {
         try
         {
