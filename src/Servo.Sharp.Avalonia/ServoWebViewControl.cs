@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Input.TextInput;
 using Avalonia.Styling;
@@ -123,6 +124,7 @@ public class ServoWebViewControl : Control
     private ColorPickerOverlay? _activeColorPickerOverlay;
     private ServoTextInputMethodClient? _imeClient;
     private bool _imeComposing;
+    private ScrollViewer? _scrollViewer;
 
     private bool HasModalOverlay =>
         _activeSelectOverlay != null ||
@@ -147,6 +149,15 @@ public class ServoWebViewControl : Control
         Focusable = true;
     }
 
+    public static readonly StyledProperty<bool> ShowScrollBarsProperty =
+        AvaloniaProperty.Register<ServoWebViewControl, bool>(nameof(ShowScrollBars), true);
+
+    public bool ShowScrollBars
+    {
+        get => GetValue(ShowScrollBarsProperty);
+        set => SetValue(ShowScrollBarsProperty, value);
+    }
+
     public ServoRenderingBackend RenderingBackend { get; set; } = ServoRenderingBackend.Hardware;
 
     public nuint? PendingCreateNewWebViewRequest { get; set; }
@@ -156,8 +167,14 @@ public class ServoWebViewControl : Control
         base.OnAttachedToVisualTree(e);
 
         _surface = new ServoBitmapSurface();
+        _scrollViewer = new ScrollViewer
+        {
+            Content = _surface,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        };
         _contentHost = new Panel();
-        _contentHost.Children.Add(_surface);
+        _contentHost.Children.Add(_scrollViewer);
 
         ((ISetLogicalParent)_contentHost).SetParent(this);
         VisualChildren.Add(_contentHost);
@@ -217,6 +234,13 @@ public class ServoWebViewControl : Control
         {
             ResizeServo();
         }
+        else if (change.Property == ShowScrollBarsProperty)
+        {
+            if (change.GetNewValue<bool>())
+                _surface?.InjectScrollTracking();
+            else
+                _surface?.OnNavigationStarted(); // resets scroll state
+        }
     }
 
     public void Navigate(string url) => _webView?.Load(url);
@@ -264,6 +288,7 @@ public class ServoWebViewControl : Control
         }
 
         _surface!.SetRenderingContext(_renderingContext);
+        _surface.SetWebView(_webView);
         _webView.SetHidpiScale((float)scaling);
         _webView.NotifyThemeChange(GetServoTheme());
 
@@ -345,6 +370,8 @@ public class ServoWebViewControl : Control
             LogicalChildren.Remove(_contentHost);
             _contentHost = null;
         }
+        _surface?.SetWebView(null);
+        _scrollViewer = null;
         _surface = null;
         // Engine is NOT disposed here — it's owned by the app, not the control.
         _renderingContext?.Dispose(); _renderingContext = null;
@@ -535,6 +562,15 @@ public class ServoWebViewControl : Control
         Dispatcher.UIThread.Post(() =>
         {
             IsLoading = e.Status != Sharp.LoadStatus.Complete;
+
+            if (ShowScrollBars)
+            {
+                if (e.Status == Sharp.LoadStatus.Started)
+                    _surface?.OnNavigationStarted();
+                else if (e.Status == Sharp.LoadStatus.HeadParsed || e.Status == Sharp.LoadStatus.Complete)
+                    _surface?.InjectScrollTracking();
+            }
+
             LoadStatusChanged?.Invoke(this, e);
         });
 
@@ -564,7 +600,15 @@ public class ServoWebViewControl : Control
         Dispatcher.UIThread.Post(() => Crashed?.Invoke(this, e));
 
     private void OnWebViewConsoleMessage(object? sender, ConsoleMessageEventArgs e) =>
-        Dispatcher.UIThread.Post(() => ConsoleMessage?.Invoke(this, e));
+        Dispatcher.UIThread.Post(() =>
+        {
+            // Intercept scroll bridge messages before forwarding to consumers
+            if (ShowScrollBars && _surface != null &&
+                _surface.TryHandleConsoleMessage(e.Message))
+                return;
+
+            ConsoleMessage?.Invoke(this, e);
+        });
 
     private void OnWebViewNavigationRequested(object? sender, NavigationRequestEventArgs e)
     {
