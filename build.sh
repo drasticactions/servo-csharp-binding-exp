@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: ./build.sh [debug|release] [--servo-dir <path>] [--target <rust-target>]
+# Usage: ./build.sh [debug|release] [--servo-dir <path>] [--target <rust-target>] [--gstreamer]
 
 set -euo pipefail
 
@@ -7,11 +7,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIGURATION="debug"
 SERVO_DIR="${SCRIPT_DIR}/external/servo"
 RUST_TARGET=""
+ENABLE_GSTREAMER=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --servo-dir) SERVO_DIR="$2"; shift 2 ;;
         --target) RUST_TARGET="$2"; shift 2 ;;
+        --gstreamer) ENABLE_GSTREAMER=true; shift ;;
         release|Release) CONFIGURATION="release"; shift ;;
         debug|Debug) CONFIGURATION="debug"; shift ;;
         *) shift ;;
@@ -31,10 +33,14 @@ fi
 cd "$SCRIPT_DIR/servo-ffi"
 
 # Set up GStreamer pkg-config paths for media-gstreamer feature
-if [ "$(uname -s)" = "Darwin" ] && [ -d "/Library/Frameworks/GStreamer.framework/Versions/1.0" ]; then
+if [ "$ENABLE_GSTREAMER" = true ] && [ "$(uname -s)" = "Darwin" ] && [ -d "/Library/Frameworks/GStreamer.framework/Versions/1.0" ]; then
     GST_ROOT="/Library/Frameworks/GStreamer.framework/Versions/1.0"
     export PKG_CONFIG_PATH="${GST_ROOT}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
     export PATH="${GST_ROOT}/bin${PATH:+:$PATH}"
+fi
+
+if [ "$ENABLE_GSTREAMER" = true ]; then
+    CARGO_ARGS="$CARGO_ARGS --features servo/media-gstreamer"
 fi
 
 # Work around glslopt
@@ -133,7 +139,7 @@ if [ -d "$RESOURCES_SRC" ]; then
 fi
 
 # Copy GStreamer libraries for media playback (macOS)
-if [ "$(uname -s)" = "Darwin" ] && [ -d "${GST_ROOT:-}/lib" ]; then
+if [ "$ENABLE_GSTREAMER" = true ] && [ "$(uname -s)" = "Darwin" ] && [ -d "${GST_ROOT:-}/lib" ]; then
     GSTREAMER_DST="$SCRIPT_DIR/artifacts/lib"
     rm -rf "$GSTREAMER_DST"
     mkdir -p "$GSTREAMER_DST"

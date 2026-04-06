@@ -11,7 +11,7 @@ name = "servo_ffi"
 crate-type = ["cdylib"]
 
 [dependencies]
-servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "gamepad", "media-gstreamer"] }
+servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "gamepad"] }
 servo-base = { path = "../external/servo/components/shared/base" }
 servo-profile-traits = { path = "../external/servo/components/shared/profile" }
 dpi = "0.1"
@@ -28,7 +28,7 @@ env_logger = "0.11"
 raw-window-handle = "0.6"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "gamepad", "clipboard", "no-wgl", "media-gstreamer"] }
+servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "gamepad", "clipboard", "no-wgl"] }
 surfman = { version = "0.11.0", features = ["chains", "sm-angle-default"] }
 windows = { version = "0.61", features = [
     "Win32_Graphics_Direct3D11",
@@ -37,11 +37,11 @@ windows = { version = "0.61", features = [
 ] }
 
 [target.'cfg(all(target_os = "linux", not(target_env = "ohos")))'.dependencies]
-servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "gamepad", "clipboard", "media-gstreamer"] }
+servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "gamepad", "clipboard"] }
 surfman = { version = "0.11.0", features = ["chains", "sm-x11"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "gamepad", "clipboard", "media-gstreamer"] }
+servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "gamepad", "clipboard"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "gamepad"] }
