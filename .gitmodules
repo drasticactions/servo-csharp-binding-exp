@@ -1,3 +1,3 @@
 [submodule "external/servo"]
 	path = external/servo
-	url = git@github.com:drasticactions/servo.git
+	url = git@github.com:servo/servo.git
