@@ -54,6 +54,6 @@ public sealed class FilePickerRequestEventArgs : EventArgs
 
     internal static IReadOnlyList<string> ParseJsonArray(string json)
     {
-        return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        return JsonSerializer.Deserialize(json, ServoJsonContext.Default.ListString) ?? [];
     }
 }

@@ -10,6 +10,6 @@ public sealed class HistoryChangedEventArgs(IReadOnlyList<string> urls, int curr
 
     internal static IReadOnlyList<string> ParseUrlsJson(string json)
     {
-        return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        return JsonSerializer.Deserialize(json, ServoJsonContext.Default.ListString) ?? [];
     }
 }

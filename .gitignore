@@ -5,6 +5,7 @@
 
 # dotenv files
 .env
+Cargo.lock
 
 # User-specific files
 *.rsuser

@@ -229,10 +229,7 @@ public partial class MainWindow : Window
             try
             {
                 using var doc = JsonDocument.Parse(json);
-                MemoryReportOutput.Text = JsonSerializer.Serialize(doc, new JsonSerializerOptions
-                {
-                    WriteIndented = true,
-                });
+                MemoryReportOutput.Text = JsonSerializer.Serialize(doc, DemoJsonContext.Default.JsonDocument);
             }
             catch
             {

@@ -168,7 +168,7 @@ public sealed class ServoEngine : IDisposable
         if (ptr == null) return [];
         var json = Marshal.PtrToStringUTF8((nint)ptr) ?? "[]";
         ServoNative.servo_free_string(ptr);
-        return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        return JsonSerializer.Deserialize(json, ServoJsonContext.Default.ListString) ?? [];
     }
 
     public unsafe void ClearCache()
