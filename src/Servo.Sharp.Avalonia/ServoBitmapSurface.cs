@@ -39,11 +39,16 @@ internal class ServoBitmapSurface : Control
             return;
         }
 
-        _bitmap = new WriteableBitmap(
-            new PixelSize((int)pixels.Width, (int)pixels.Height),
-            new Vector(96, 96),
-            PixelFormats.Rgba8888,
-            AlphaFormat.Premul);
+        var neededSize = new PixelSize((int)pixels.Width, (int)pixels.Height);
+        if (_bitmap == null || _bitmap.PixelSize != neededSize)
+        {
+            _bitmap?.Dispose();
+            _bitmap = new WriteableBitmap(
+                neededSize,
+                new Vector(96, 96),
+                PixelFormats.Rgba8888,
+                AlphaFormat.Premul);
+        }
 
         using (var fb = _bitmap.Lock())
         {
