@@ -7,6 +7,7 @@
 .env
 Cargo.lock
 servo-ffi/Cargo.lock
+*.lscache
 
 # User-specific files
 *.rsuser

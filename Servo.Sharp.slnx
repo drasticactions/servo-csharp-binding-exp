@@ -1,5 +1,7 @@
 <Solution>
   <Project Path="src/Servo.Sharp/Servo.Sharp.csproj" />
+  <Project Path="src/Servo.Sharp.Demo.Android/Servo.Sharp.Demo.Android.csproj" />
+  <Project Path="src/Servo.Sharp.Demo.Core/Servo.Sharp.Demo.Core.csproj" />
   <Project Path="src/Servo.Sharp.Avalonia/Servo.Sharp.Avalonia.csproj" />
   <Project Path="src/Servo.Sharp.Demo/Servo.Sharp.Demo.csproj" />
 </Solution>
