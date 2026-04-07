@@ -1,26 +1,22 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
-    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.0-rc2" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.0.0-rc2" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.0-rc2" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.0-rc2" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../Servo.Sharp.Demo.Core/Servo.Sharp.Demo.Core.csproj" />
     <ProjectReference Include="..\Servo.Sharp\Servo.Sharp.csproj" />
     <ProjectReference Include="..\Servo.Sharp.Avalonia\Servo.Sharp.Avalonia.csproj" />
   </ItemGroup>
 
-  <Import Project="..\Servo.Sharp.Native.targets" />
 </Project>

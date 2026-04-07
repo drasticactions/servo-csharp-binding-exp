@@ -3,7 +3,7 @@ using System.Text;
 using Servo.Sharp;
 using Servo.Sharp.Protocols;
 
-namespace Servo.Sharp.Demo;
+namespace Servo.Sharp.Demo.Core;
 
 public class ServoProtocolHandler : IProtocolHandler
 {

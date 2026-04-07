@@ -1,0 +1,77 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Servo.Sharp.Demo.Core.MobileMainPage">
+
+  <Grid RowDefinitions="Auto,*,Auto">
+
+    <Border Grid.Row="0"
+            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="8,6">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBox x:Name="UrlBar" Grid.Column="0"
+                 VerticalContentAlignment="Center"
+                 Height="36" FontSize="14"
+                 Text="https://servo.org"
+                 CornerRadius="18" Padding="14,0" />
+        <Button x:Name="GoButton" Grid.Column="1"
+                Content="Go" Height="36" MinWidth="48"
+                Margin="6,0,0,0" FontSize="14"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center" />
+      </Grid>
+    </Border>
+
+    <Panel x:Name="WebViewContainer" Grid.Row="1" />
+
+    <ProgressBar x:Name="LoadingBar" Grid.Row="1"
+                 VerticalAlignment="Top"
+                 IsIndeterminate="True"
+                 IsVisible="False"
+                 Height="3" />
+
+    <Border Grid.Row="2"
+            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="0,4,0,4">
+      <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="2" HorizontalAlignment="Stretch">
+        <Button x:Name="BackButton" Grid.Column="0"
+                Content="&#x25C1;" IsEnabled="False"
+                FontSize="20" Height="44"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Background="Transparent" BorderThickness="0" />
+        <Button x:Name="ForwardButton" Grid.Column="1"
+                Content="&#x25B7;" IsEnabled="False"
+                FontSize="20" Height="44"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Background="Transparent" BorderThickness="0" />
+        <Button x:Name="HomeButton" Grid.Column="2"
+                Content="&#x2302;" FontSize="22" Height="44"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Background="Transparent" BorderThickness="0" />
+        <Button x:Name="ReloadButton" Grid.Column="3"
+                Content="&#x21BB;" FontSize="20" Height="44"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Background="Transparent" BorderThickness="0" />
+        <Button x:Name="StopButton" Grid.Column="4"
+                Content="&#x2715;" FontSize="18" Height="44"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Background="Transparent" BorderThickness="0"
+                IsVisible="False" />
+      </Grid>
+    </Border>
+
+  </Grid>
+</UserControl>

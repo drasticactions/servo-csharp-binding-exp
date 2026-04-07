@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Servo.Sharp.Demo;
+namespace Servo.Sharp.Demo.Core;
 
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(JsonDocument))]
-internal partial class DemoJsonContext : JsonSerializerContext;
+public partial class DemoJsonContext : JsonSerializerContext;

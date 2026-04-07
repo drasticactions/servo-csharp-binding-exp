@@ -13,6 +13,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Servo.Sharp;
 using Servo.Sharp.Avalonia;
+using Servo.Sharp.Demo.Core;
 
 namespace Servo.Sharp.Demo;
 
@@ -24,35 +25,76 @@ public partial class MainWindow : Window
     private bool _experimentalFeaturesEnabled;
     private bool _profilerRunning;
 
-    private const string NewTabUrl = "servo:newtab";
-
-    public MainWindow() : this(NewTabUrl) { }
+    public MainWindow() : this(ServoAppSetup.NewTabUrl) { }
 
     public MainWindow(string? initialUrl)
     {
         InitializeComponent();
 
-        BackButton.Click += (_, _) => ActiveWebView?.GoBack();
+        BackButton.Click += OnBackClick;
         BackButton.PointerPressed += OnBackButtonPointerPressed;
-        ForwardButton.Click += (_, _) => ActiveWebView?.GoForward();
+        ForwardButton.Click += OnForwardClick;
         ForwardButton.PointerPressed += OnForwardButtonPointerPressed;
-        ReloadButton.Click += (_, _) => ActiveWebView?.Reload();
-        UrlBar.KeyDown += (_, e) => { if (e.Key == Key.Enter) NavigateToUrlBar(); };
-        NewTabButton.Click += (_, _) => AddTab(NewTabUrl);
-        NewWindowButton.Click += (_, _) => OpenNewWindow();
-        SettingsButton.Click += (_, _) => ToggleSettingsPanel();
+        ReloadButton.Click += OnReloadClick;
+        UrlBar.KeyDown += OnUrlBarKeyDown;
+        NewTabButton.Click += OnNewTabClick;
+        NewWindowButton.Click += OnNewWindowClick;
+        SettingsButton.Click += OnSettingsClick;
 
         TabStrip.AddHandler(DragTabItem.TabClickedEvent, OnTabClicked);
-        TabStrip.AddHandler(DragTabItem.DragStartedEvent, (_, _) => _isDraggingTab = true, handledEventsToo: true);
-        TabStrip.AddHandler(DragTabItem.DragCompletedEvent, (_, _) => _isDraggingTab = false, handledEventsToo: true);
+        TabStrip.AddHandler(DragTabItem.DragStartedEvent, OnDragStarted, handledEventsToo: true);
+        TabStrip.AddHandler(DragTabItem.DragCompletedEvent, OnDragCompleted, handledEventsToo: true);
         TabStrip.TabReordered += OnTabReordered;
 
-        AddTab(initialUrl ?? NewTabUrl);
+        AddTab(initialUrl ?? ServoAppSetup.NewTabUrl);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        BackButton.Click -= OnBackClick;
+        BackButton.PointerPressed -= OnBackButtonPointerPressed;
+        ForwardButton.Click -= OnForwardClick;
+        ForwardButton.PointerPressed -= OnForwardButtonPointerPressed;
+        ReloadButton.Click -= OnReloadClick;
+        UrlBar.KeyDown -= OnUrlBarKeyDown;
+        NewTabButton.Click -= OnNewTabClick;
+        NewWindowButton.Click -= OnNewWindowClick;
+        SettingsButton.Click -= OnSettingsClick;
+
+        TabStrip.RemoveHandler(DragTabItem.TabClickedEvent, OnTabClicked);
+        TabStrip.RemoveHandler(DragTabItem.DragStartedEvent, OnDragStarted);
+        TabStrip.RemoveHandler(DragTabItem.DragCompletedEvent, OnDragCompleted);
+        TabStrip.TabReordered -= OnTabReordered;
+
+        if (SettingsPanel.IsVisible)
+            UnwireSettingsEvents();
+
+        foreach (var tab in _tabs)
+            UnwireWebViewEvents(tab);
+
+        _tabs.Clear();
+
+        base.OnClosed(e);
     }
 
     private ServoWebViewControl? ActiveWebView => _activeTabIndex >= 0 && _activeTabIndex < _tabs.Count
         ? _tabs[_activeTabIndex].WebView
         : null;
+
+    private void OnBackClick(object? sender, RoutedEventArgs e) => ActiveWebView?.GoBack();
+    private void OnForwardClick(object? sender, RoutedEventArgs e) => ActiveWebView?.GoForward();
+    private void OnReloadClick(object? sender, RoutedEventArgs e) => ActiveWebView?.Reload();
+    private void OnNewTabClick(object? sender, RoutedEventArgs e) => AddTab(ServoAppSetup.NewTabUrl);
+    private void OnNewWindowClick(object? sender, RoutedEventArgs e) => OpenNewWindow();
+    private void OnSettingsClick(object? sender, RoutedEventArgs e) => ToggleSettingsPanel();
+    private void OnCloseSettingsClick(object? sender, RoutedEventArgs e) => ToggleSettingsPanel();
+    private void OnDragStarted(object? sender, DragTabEventArgs e) => _isDraggingTab = true;
+    private void OnDragCompleted(object? sender, DragTabEventArgs e) => _isDraggingTab = false;
+
+    private void OnUrlBarKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) NavigateToUrlBar();
+    }
 
     public void AddTab(string url)
     {
@@ -104,6 +146,7 @@ public partial class MainWindow : Window
         }
 
         var tab = _tabs[index];
+        UnwireWebViewEvents(tab);
         _tabs.RemoveAt(index);
         WebViewContainer.Children.Remove(tab.WebView);
 
@@ -126,7 +169,7 @@ public partial class MainWindow : Window
 
     private void OpenNewWindow()
     {
-        var window = new MainWindow(NewTabUrl);
+        var window = new MainWindow(ServoAppSetup.NewTabUrl);
         window.Show();
     }
 
@@ -155,7 +198,7 @@ public partial class MainWindow : Window
         ToggleProfilerButton.Click += OnToggleSamplingProfiler;
         CaptureButton.Click += OnCaptureWebRender;
         MemoryReportButton.Click += OnMemoryReport;
-        CloseSettingsButton.Click += (_, _) => ToggleSettingsPanel();
+        CloseSettingsButton.Click += OnCloseSettingsClick;
     }
 
     private void UnwireSettingsEvents()
@@ -167,6 +210,7 @@ public partial class MainWindow : Window
         ToggleProfilerButton.Click -= OnToggleSamplingProfiler;
         CaptureButton.Click -= OnCaptureWebRender;
         MemoryReportButton.Click -= OnMemoryReport;
+        CloseSettingsButton.Click -= OnCloseSettingsClick;
     }
 
     private void OnExperimentalToggled(object? sender, RoutedEventArgs e)
@@ -250,23 +294,20 @@ public partial class MainWindow : Window
     private void WireWebViewEvents(TabInfo tab)
     {
         var wv = tab.WebView;
-
-        wv.Navigated += (_, e) =>
+        tab.OnNavigated = (_, e) =>
         {
             tab.Url = e.Url;
             if (IsActiveTab(tab))
                 UrlBar.Text = e.Url;
         };
-
-        wv.TitleChanged += (_, e) =>
+        tab.OnTitleChanged = (_, e) =>
         {
             tab.Title = e.Title ?? "New Tab";
             if (IsActiveTab(tab))
                 UpdateWindowTitle(tab);
             RebuildTabStrip();
         };
-
-        wv.LoadStatusChanged += (_, e) =>
+        tab.OnLoadStatusChanged = (_, e) =>
         {
             if (IsActiveTab(tab))
             {
@@ -279,8 +320,7 @@ public partial class MainWindow : Window
                 };
             }
         };
-
-        wv.PropertyChanged += (_, e) =>
+        tab.OnPropertyChanged = (_, e) =>
         {
             if (!IsActiveTab(tab)) return;
             if (e.Property == ServoWebViewControl.CanGoBackProperty)
@@ -288,46 +328,38 @@ public partial class MainWindow : Window
             else if (e.Property == ServoWebViewControl.CanGoForwardProperty)
                 ForwardButton.IsEnabled = wv.CanGoForward;
         };
-
-        wv.ConsoleMessage += (_, e) =>
+        tab.OnConsoleMessage = (_, e) =>
         {
             if (IsActiveTab(tab))
                 StatusText.Text = $"[{e.Level}] {e.Message}";
         };
-
-        wv.StatusTextChanged += (_, e) =>
+        tab.OnStatusTextChanged = (_, e) =>
         {
             if (IsActiveTab(tab))
                 StatusText.Text = e.StatusText ?? "Ready";
         };
-
-        wv.MoveToRequested += (_, e) => Position = new PixelPoint(e.X, e.Y);
-
-        wv.ResizeToRequested += (_, e) =>
+        tab.OnMoveToRequested = (_, e) => Position = new PixelPoint(e.X, e.Y);
+        tab.OnResizeToRequested = (_, e) =>
         {
             Width = e.Width;
             Height = e.Height;
         };
-
-        wv.TraversalCompleted += (_, _) =>
+        tab.OnTraversalCompleted = (_, _) =>
         {
             if (IsActiveTab(tab))
                 StatusText.Text = "Navigation traversal complete";
         };
-
-        wv.Crashed += (_, e) =>
+        tab.OnCrashed = (_, e) =>
         {
             if (IsActiveTab(tab))
                 StatusText.Text = $"CRASHED: {e.Reason}";
         };
-
-        wv.HistoryChanged += (_, e) =>
+        tab.OnHistoryChanged = (_, e) =>
         {
             tab.HistoryUrls = e.Urls;
             tab.HistoryIndex = e.CurrentIndex;
         };
-
-        wv.CreateNewWebViewRequested += (_, e) =>
+        tab.OnCreateNewWebViewRequested = (_, e) =>
         {
             var newWebView = new ServoWebViewControl
             {
@@ -347,6 +379,36 @@ public partial class MainWindow : Window
             SwitchToTab(_tabs.Count - 1);
             e.MarkHandled();
         };
+
+        wv.Navigated += tab.OnNavigated;
+        wv.TitleChanged += tab.OnTitleChanged;
+        wv.LoadStatusChanged += tab.OnLoadStatusChanged;
+        wv.PropertyChanged += tab.OnPropertyChanged;
+        wv.ConsoleMessage += tab.OnConsoleMessage;
+        wv.StatusTextChanged += tab.OnStatusTextChanged;
+        wv.MoveToRequested += tab.OnMoveToRequested;
+        wv.ResizeToRequested += tab.OnResizeToRequested;
+        wv.TraversalCompleted += tab.OnTraversalCompleted;
+        wv.Crashed += tab.OnCrashed;
+        wv.HistoryChanged += tab.OnHistoryChanged;
+        wv.CreateNewWebViewRequested += tab.OnCreateNewWebViewRequested;
+    }
+
+    private static void UnwireWebViewEvents(TabInfo tab)
+    {
+        var wv = tab.WebView;
+        if (tab.OnNavigated != null) wv.Navigated -= tab.OnNavigated;
+        if (tab.OnTitleChanged != null) wv.TitleChanged -= tab.OnTitleChanged;
+        if (tab.OnLoadStatusChanged != null) wv.LoadStatusChanged -= tab.OnLoadStatusChanged;
+        if (tab.OnPropertyChanged != null) wv.PropertyChanged -= tab.OnPropertyChanged;
+        if (tab.OnConsoleMessage != null) wv.ConsoleMessage -= tab.OnConsoleMessage;
+        if (tab.OnStatusTextChanged != null) wv.StatusTextChanged -= tab.OnStatusTextChanged;
+        if (tab.OnMoveToRequested != null) wv.MoveToRequested -= tab.OnMoveToRequested;
+        if (tab.OnResizeToRequested != null) wv.ResizeToRequested -= tab.OnResizeToRequested;
+        if (tab.OnTraversalCompleted != null) wv.TraversalCompleted -= tab.OnTraversalCompleted;
+        if (tab.OnCrashed != null) wv.Crashed -= tab.OnCrashed;
+        if (tab.OnHistoryChanged != null) wv.HistoryChanged -= tab.OnHistoryChanged;
+        if (tab.OnCreateNewWebViewRequested != null) wv.CreateNewWebViewRequested -= tab.OnCreateNewWebViewRequested;
     }
 
     private bool IsActiveTab(TabInfo tab) =>
@@ -356,7 +418,7 @@ public partial class MainWindow : Window
     {
         var url = UrlBar.Text;
         if (string.IsNullOrWhiteSpace(url)) return;
-        if (!url.Contains("://") && !url.StartsWith("data:") && !HasRegisteredScheme(url)) url = "https://" + url;
+        url = ServoAppSetup.NormalizeUrl(url);
         ActiveWebView?.Navigate(url);
         ActiveWebView?.Focus();
     }
@@ -469,14 +531,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private static bool HasRegisteredScheme(string url)
-    {
-        var colonIndex = url.IndexOf(':');
-        if (colonIndex <= 0) return false;
-        var scheme = url[..colonIndex];
-        return ServoLocator.Engine.RegisteredSchemes.Contains(scheme);
-    }
-
     private void OnBackButtonPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (!e.GetCurrentPoint(BackButton).Properties.IsRightButtonPressed) return;
@@ -509,7 +563,6 @@ public partial class MainWindow : Window
         if (tab == null || tab.HistoryUrls.Count == 0) return;
 
         var menu = new ContextMenu();
-        // Forward history: entries after current index
         for (int i = tab.HistoryIndex + 1; i < tab.HistoryUrls.Count; i++)
         {
             var steps = i - tab.HistoryIndex;
@@ -539,5 +592,19 @@ public partial class MainWindow : Window
         public string? Url { get; set; }
         public IReadOnlyList<string> HistoryUrls { get; set; } = [];
         public int HistoryIndex { get; set; }
+
+        // Stored event handlers for unwiring
+        public EventHandler<UrlChangedEventArgs>? OnNavigated { get; set; }
+        public EventHandler<TitleChangedEventArgs>? OnTitleChanged { get; set; }
+        public EventHandler<LoadStatusChangedEventArgs>? OnLoadStatusChanged { get; set; }
+        public EventHandler<AvaloniaPropertyChangedEventArgs>? OnPropertyChanged { get; set; }
+        public EventHandler<ConsoleMessageEventArgs>? OnConsoleMessage { get; set; }
+        public EventHandler<StatusTextChangedEventArgs>? OnStatusTextChanged { get; set; }
+        public EventHandler<MoveToRequestEventArgs>? OnMoveToRequested { get; set; }
+        public EventHandler<ResizeToRequestEventArgs>? OnResizeToRequested { get; set; }
+        public EventHandler? OnTraversalCompleted { get; set; }
+        public EventHandler<CrashedEventArgs>? OnCrashed { get; set; }
+        public EventHandler<HistoryChangedEventArgs>? OnHistoryChanged { get; set; }
+        public EventHandler<CreateNewWebViewRequestEventArgs>? OnCreateNewWebViewRequested { get; set; }
     }
 }

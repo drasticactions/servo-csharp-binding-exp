@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>30</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationId>com.servo.sharp.demo</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AndroidResource Include="Icon.png">
+      <Link>Resources\drawable\Icon.png</Link>
+    </AndroidResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Android" Version="12.0.0-rc2" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.0-rc2" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.0-rc2" />
+    <PackageReference Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.0.1.15" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Servo.Sharp.Demo.Core/Servo.Sharp.Demo.Core.csproj" />
+    <ProjectReference Include="..\Servo.Sharp\Servo.Sharp.csproj" />
+    <ProjectReference Include="..\Servo.Sharp.Avalonia\Servo.Sharp.Avalonia.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <_ServoArtifacts>$(MSBuildThisFileDirectory)/../../artifacts</_ServoArtifacts>
+  </PropertyGroup>
+
+  <!-- Include native Servo libraries for Android -->
+  <ItemGroup Condition="Exists('$(_ServoArtifacts)/runtimes/android-arm64/native/libservo_ffi.so')">
+    <AndroidNativeLibrary Include="$(_ServoArtifacts)/runtimes/android-arm64/native/*.so">
+      <Abi>arm64-v8a</Abi>
+    </AndroidNativeLibrary>
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(_ServoArtifacts)/runtimes/android-arm/native/libservo_ffi.so')">
+    <AndroidNativeLibrary Include="$(_ServoArtifacts)/runtimes/android-arm/native/*.so">
+      <Abi>armeabi-v7a</Abi>
+    </AndroidNativeLibrary>
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(_ServoArtifacts)/runtimes/android-x64/native/libservo_ffi.so')">
+    <AndroidNativeLibrary Include="$(_ServoArtifacts)/runtimes/android-x64/native/*.so">
+      <Abi>x86_64</Abi>
+    </AndroidNativeLibrary>
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(_ServoArtifacts)/runtimes/android-x86/native/libservo_ffi.so')">
+    <AndroidNativeLibrary Include="$(_ServoArtifacts)/runtimes/android-x86/native/*.so">
+      <Abi>x86</Abi>
+    </AndroidNativeLibrary>
+  </ItemGroup>
+
+  <!-- Copy Servo resources into the APK assets -->
+  <ItemGroup Condition="Exists('$(_ServoArtifacts)/resources/')">
+    <AndroidAsset Include="$(_ServoArtifacts)/resources/**/*">
+      <Link>Assets/resources/%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </AndroidAsset>
+  </ItemGroup>
+</Project>

@@ -1,16 +1,9 @@
-using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Markup.Xaml;
 
 namespace Servo.Sharp.Demo;
 
-public partial class App : Application
+public partial class App : Servo.Sharp.Demo.Core.App
 {
-    public override void Initialize()
-    {
-        AvaloniaXamlLoader.Load(this);
-    }
-
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
@@ -18,7 +11,9 @@ public partial class App : Application
             desktop.ShutdownMode = global::Avalonia.Controls.ShutdownMode.OnLastWindowClose;
             desktop.MainWindow = new MainWindow();
         }
-
-        base.OnFrameworkInitializationCompleted();
+        else
+        {
+            base.OnFrameworkInitializationCompleted();
+        }
     }
 }
