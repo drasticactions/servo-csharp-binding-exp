@@ -5597,9 +5597,11 @@ dependencies = [
  "raw-window-handle",
  "serde_json",
  "servo",
+ "servo-allocator",
  "servo-base",
  "servo-profile-traits",
  "surfman",
+ "tikv-jemallocator",
  "url",
  "windows",
 ]

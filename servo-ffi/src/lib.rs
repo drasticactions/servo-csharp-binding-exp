@@ -1,3 +1,6 @@
+// Force the jemalloc allocator crate to be linked into the cdylib.
+extern crate servo_allocator;
+
 mod hardware_rendering;
 #[cfg(target_os = "windows")]
 mod composition_rendering;

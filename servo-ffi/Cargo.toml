@@ -26,6 +26,8 @@ http = "1.4"
 log = "0.4"
 env_logger = "0.11"
 raw-window-handle = "0.6"
+servo-allocator = { path = "../external/servo/components/allocator" }
+tikv-jemallocator = { version = "0.6", features = ["unprefixed_malloc_on_supported_platforms"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 servo = { path = "../external/servo/components/servo", default-features = false, features = ["js_jit", "gamepad", "clipboard", "no-wgl"] }
