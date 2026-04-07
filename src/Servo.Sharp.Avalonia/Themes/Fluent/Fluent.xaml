@@ -6,6 +6,7 @@
         <MergeResourceInclude Source="avares://Servo.Sharp.Avalonia/Themes/Fluent/AuthenticationOverlay.xaml" />
         <MergeResourceInclude Source="avares://Servo.Sharp.Avalonia/Themes/Fluent/NotificationOverlay.xaml" />
         <MergeResourceInclude Source="avares://Servo.Sharp.Avalonia/Themes/Fluent/ProtocolHandlerOverlay.xaml" />
+        <MergeResourceInclude Source="avares://Servo.Sharp.Avalonia/Themes/Fluent/PermissionOverlay.xaml" />
         <MergeResourceInclude Source="avares://Servo.Sharp.Avalonia/Themes/Fluent/BluetoothDeviceOverlay.xaml" />
         <MergeResourceInclude Source="avares://Servo.Sharp.Avalonia/Themes/Fluent/ColorPickerOverlay.xaml" />
       </ResourceDictionary.MergedDictionaries>

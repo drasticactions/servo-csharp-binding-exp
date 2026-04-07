@@ -96,6 +96,7 @@ public class ServoWebViewControl : Control
     public event EventHandler<MoveToRequestEventArgs>? MoveToRequested;
     public event EventHandler<ResizeToRequestEventArgs>? ResizeToRequested;
     public event EventHandler<ProtocolHandlerRequestEventArgs>? ProtocolHandlerRequested;
+    public event EventHandler<PermissionRequestEventArgs>? PermissionRequested;
     public event EventHandler<NotificationEventArgs>? NotificationRequested;
     public event EventHandler<BluetoothDeviceSelectionEventArgs>? BluetoothDeviceSelectionRequested;
     public event EventHandler<GamepadHapticEffectEventArgs>? GamepadHapticEffectRequested;
@@ -119,6 +120,7 @@ public class ServoWebViewControl : Control
     private SelectElementOverlay? _activeSelectOverlay;
     private AuthenticationOverlay? _activeAuthOverlay;
     private ProtocolHandlerOverlay? _activeProtocolHandlerOverlay;
+    private PermissionOverlay? _activePermissionOverlay;
     private BluetoothDeviceOverlay? _activeBluetoothOverlay;
     private ContextMenu? _activeContextMenu;
     private ColorPickerOverlay? _activeColorPickerOverlay;
@@ -130,6 +132,7 @@ public class ServoWebViewControl : Control
         _activeSelectOverlay != null ||
         _activeAuthOverlay != null ||
         _activeProtocolHandlerOverlay != null ||
+        _activePermissionOverlay != null ||
         _activeBluetoothOverlay != null ||
         _activeColorPickerOverlay != null ||
         _activeContextMenu != null;
@@ -316,6 +319,7 @@ public class ServoWebViewControl : Control
         _webView.MoveToRequested += OnWebViewMoveToRequested;
         _webView.ResizeToRequested += OnWebViewResizeToRequested;
         _webView.ProtocolHandlerRequested += OnWebViewProtocolHandlerRequested;
+        _webView.PermissionRequested += OnWebViewPermissionRequested;
         _webView.NotificationRequested += OnWebViewNotificationRequested;
         _webView.BluetoothDeviceSelectionRequested += OnWebViewBluetoothDeviceSelectionRequested;
         _webView.GamepadHapticEffectRequested += OnWebViewGamepadHapticEffectRequested;
@@ -735,6 +739,21 @@ public class ServoWebViewControl : Control
             _contentHost.Children.Add(overlay);
         });
 
+    private void OnWebViewPermissionRequested(object? sender, PermissionRequestEventArgs e) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_contentHost == null) { e.Deny(); return; }
+            if (PermissionRequested != null)
+            {
+                PermissionRequested.Invoke(this, e);
+                return;
+            }
+            var overlay = new PermissionOverlay();
+            overlay.Initialize(_contentHost, e, () => _activePermissionOverlay = null);
+            _activePermissionOverlay = overlay;
+            _contentHost.Children.Add(overlay);
+        });
+
     private void OnWebViewNotificationRequested(object? sender, NotificationEventArgs e) =>
         Dispatcher.UIThread.Post(() =>
         {
@@ -831,6 +850,12 @@ public class ServoWebViewControl : Control
         {
             _activeProtocolHandlerOverlay.DismissIfOpen();
             _activeProtocolHandlerOverlay = null;
+        }
+
+        if (_activePermissionOverlay != null)
+        {
+            _activePermissionOverlay.DismissIfOpen();
+            _activePermissionOverlay = null;
         }
 
         if (_activeBluetoothOverlay != null)

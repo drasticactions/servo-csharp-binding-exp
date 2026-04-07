@@ -706,8 +706,11 @@ public sealed class ServoWebView : IDisposable
     {
         if (!TryGet(ud, out var w)) return;
         var args = new PermissionRequestEventArgs((PermissionFeature)feature, handle);
-        w.PermissionRequested?.Invoke(w, args);
-        args.Deny(); // default: deny if unhandled
+        var handler = w.PermissionRequested;
+        if (handler != null)
+            handler.Invoke(w, args);
+        else
+            args.Deny(); // default: deny if unhandled
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
