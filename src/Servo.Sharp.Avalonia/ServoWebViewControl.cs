@@ -100,6 +100,7 @@ public class ServoWebViewControl : Control
     public event EventHandler<NotificationEventArgs>? NotificationRequested;
     public event EventHandler<BluetoothDeviceSelectionEventArgs>? BluetoothDeviceSelectionRequested;
     public event EventHandler<GamepadHapticEffectEventArgs>? GamepadHapticEffectRequested;
+    public event EventHandler? FaviconChanged;
     public event EventHandler<HistoryChangedEventArgs>? HistoryChanged;
     public event EventHandler<FilePickerRequestEventArgs>? FilePickerRequested;
     public event EventHandler<ColorPickerRequestEventArgs>? ColorPickerRequested;
@@ -254,6 +255,8 @@ public class ServoWebViewControl : Control
     public Task<string> EvaluateJavaScriptAsync(string script) =>
         _webView?.EvaluateJavaScriptAsync(script) ?? Task.FromResult("undefined");
 
+    public FaviconData? GetFavicon() => _webView?.GetFavicon();
+
     public ServoWebView? WebView => _webView;
 
     public void NotifyThemeChange(ServoTheme theme) => _webView?.NotifyThemeChange(theme);
@@ -300,6 +303,7 @@ public class ServoWebViewControl : Control
         _webView.UrlChanged += OnWebViewUrlChanged;
         _webView.TitleChanged += OnWebViewTitleChanged;
         _webView.CursorChanged += OnWebViewCursorChanged;
+        _webView.FaviconChanged += OnWebViewFaviconChanged;
         _webView.HistoryChanged += OnWebViewHistoryChanged;
         _webView.Crashed += OnWebViewCrashed;
         _webView.WebViewConsoleMessage += OnWebViewConsoleMessage;
@@ -340,6 +344,7 @@ public class ServoWebViewControl : Control
             _webView.UrlChanged -= OnWebViewUrlChanged;
             _webView.TitleChanged -= OnWebViewTitleChanged;
             _webView.CursorChanged -= OnWebViewCursorChanged;
+            _webView.FaviconChanged -= OnWebViewFaviconChanged;
             _webView.HistoryChanged -= OnWebViewHistoryChanged;
             _webView.Crashed -= OnWebViewCrashed;
             _webView.WebViewConsoleMessage -= OnWebViewConsoleMessage;
@@ -591,6 +596,9 @@ public class ServoWebViewControl : Control
     private void OnWebViewCursorChanged(object? sender, CursorChangedEventArgs e) =>
         Dispatcher.UIThread.Post(() =>
             Cursor = new Cursor(AvaloniaKeyMapping.ToAvaloniaCursor(e.Cursor)));
+
+    private void OnWebViewFaviconChanged(object? sender, EventArgs e) =>
+        Dispatcher.UIThread.Post(() => FaviconChanged?.Invoke(this, EventArgs.Empty));
 
     private void OnWebViewHistoryChanged(object? sender, HistoryChangedEventArgs e) =>
         Dispatcher.UIThread.Post(() =>

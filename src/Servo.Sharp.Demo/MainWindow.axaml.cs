@@ -11,6 +11,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Servo.Sharp;
 using Servo.Sharp.Avalonia;
 using Servo.Sharp.Demo.Core;
@@ -359,6 +360,12 @@ public partial class MainWindow : Window
             tab.HistoryUrls = e.Urls;
             tab.HistoryIndex = e.CurrentIndex;
         };
+        tab.OnFaviconChanged = (_, _) =>
+        {
+            var faviconData = wv.GetFavicon();
+            tab.Favicon = faviconData != null ? FaviconDataToBitmap(faviconData) : null;
+            RebuildTabStrip();
+        };
         tab.OnCreateNewWebViewRequested = (_, e) =>
         {
             var newWebView = new ServoWebViewControl
@@ -391,6 +398,7 @@ public partial class MainWindow : Window
         wv.TraversalCompleted += tab.OnTraversalCompleted;
         wv.Crashed += tab.OnCrashed;
         wv.HistoryChanged += tab.OnHistoryChanged;
+        wv.FaviconChanged += tab.OnFaviconChanged;
         wv.CreateNewWebViewRequested += tab.OnCreateNewWebViewRequested;
     }
 
@@ -408,6 +416,7 @@ public partial class MainWindow : Window
         if (tab.OnTraversalCompleted != null) wv.TraversalCompleted -= tab.OnTraversalCompleted;
         if (tab.OnCrashed != null) wv.Crashed -= tab.OnCrashed;
         if (tab.OnHistoryChanged != null) wv.HistoryChanged -= tab.OnHistoryChanged;
+        if (tab.OnFaviconChanged != null) wv.FaviconChanged -= tab.OnFaviconChanged;
         if (tab.OnCreateNewWebViewRequested != null) wv.CreateNewWebViewRequested -= tab.OnCreateNewWebViewRequested;
     }
 
@@ -506,6 +515,17 @@ public partial class MainWindow : Window
             {
                 Orientation = Orientation.Horizontal,
             };
+            if (tab.Favicon != null)
+            {
+                tabContent.Children.Add(new Image
+                {
+                    Source = tab.Favicon,
+                    Width = 16,
+                    Height = 16,
+                    Margin = new Thickness(0, 0, 4, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                });
+            }
             tabContent.Children.Add(titleText);
             tabContent.Children.Add(closeBtn);
 
@@ -579,6 +599,64 @@ public partial class MainWindow : Window
         }
     }
 
+    private static unsafe Bitmap? FaviconDataToBitmap(FaviconData favicon)
+    {
+        if (favicon.Width == 0 || favicon.Height == 0) return null;
+
+        // Convert to BGRA8 if needed
+        byte[] bgra;
+        switch (favicon.Format)
+        {
+            case PixelFormat.BGRA8:
+                bgra = favicon.Data;
+                break;
+            case PixelFormat.RGBA8:
+                bgra = new byte[favicon.Data.Length];
+                for (int i = 0; i < bgra.Length; i += 4)
+                {
+                    bgra[i] = favicon.Data[i + 2];     // B
+                    bgra[i + 1] = favicon.Data[i + 1]; // G
+                    bgra[i + 2] = favicon.Data[i];     // R
+                    bgra[i + 3] = favicon.Data[i + 3]; // A
+                }
+                break;
+            case PixelFormat.RGB8:
+                bgra = new byte[favicon.Width * favicon.Height * 4];
+                for (int s = 0, d = 0; s < favicon.Data.Length; s += 3, d += 4)
+                {
+                    bgra[d] = favicon.Data[s + 2];     // B
+                    bgra[d + 1] = favicon.Data[s + 1]; // G
+                    bgra[d + 2] = favicon.Data[s];     // R
+                    bgra[d + 3] = 255;                 // A
+                }
+                break;
+            default:
+                return null;
+        }
+
+        var wb = new WriteableBitmap(
+            new PixelSize((int)favicon.Width, (int)favicon.Height),
+            new Vector(96, 96),
+            global::Avalonia.Platform.PixelFormat.Bgra8888,
+            global::Avalonia.Platform.AlphaFormat.Premul);
+        using (var buf = wb.Lock())
+        {
+            var stride = (int)favicon.Width * 4;
+            fixed (byte* src = bgra)
+            {
+                for (int y = 0; y < (int)favicon.Height; y++)
+                {
+                    Buffer.MemoryCopy(
+                        src + y * stride,
+                        (byte*)buf.Address + y * buf.RowBytes,
+                        buf.RowBytes,
+                        stride);
+                }
+            }
+        }
+        return wb;
+    }
+
     private static string TruncateTitle(string? title, int maxLength)
     {
         if (string.IsNullOrEmpty(title)) return "New Tab";
@@ -590,6 +668,7 @@ public partial class MainWindow : Window
         public required ServoWebViewControl WebView { get; init; }
         public string Title { get; set; } = "New Tab";
         public string? Url { get; set; }
+        public Bitmap? Favicon { get; set; }
         public IReadOnlyList<string> HistoryUrls { get; set; } = [];
         public int HistoryIndex { get; set; }
 
@@ -606,5 +685,6 @@ public partial class MainWindow : Window
         public EventHandler<CrashedEventArgs>? OnCrashed { get; set; }
         public EventHandler<HistoryChangedEventArgs>? OnHistoryChanged { get; set; }
         public EventHandler<CreateNewWebViewRequestEventArgs>? OnCreateNewWebViewRequested { get; set; }
+        public EventHandler? OnFaviconChanged { get; set; }
     }
 }
